@@ -1,0 +1,37 @@
+# Build results
+bin/
+obj/
+out/
+/packages/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+riderModule.iml
+/_ReSharper.Caches/
+
+# User-specific files
+*.rsuser
+*.sln.docstates
+
+# Local settings
+appsettings.Development.json
+appsettings.Local.json
+
+# Docker environment files (contains secrets)
+docker/.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test results
+TestResults/
+coverage/

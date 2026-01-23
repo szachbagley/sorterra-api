@@ -1,0 +1,35 @@
+# Build results
+**/bin/
+**/obj/
+**/out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+**/Dockerfile*
+**/.dockerignore
+docker-compose*.yml
+
+# Tests (not needed in production image)
+**/tests/
+**/*.Tests/
+
+# Documentation
+**/*.md
+LICENSE
+
+# Local settings
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Misc
+**/.DS_Store
+**/Thumbs.db

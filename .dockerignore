@@ -1,0 +1,42 @@
+# Build results
+**/bin/
+**/obj/
+**/out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+**/Dockerfile*
+**/.dockerignore
+docker-compose*.yml
+
+# Tests (not needed in production image)
+**/tests/
+**/*.Tests/
+
+# Documentation
+**/*.md
+LICENSE
+
+# Local settings
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/.env
+**/.env.*
+
+# Misc
+**/.DS_Store
+**/Thumbs.db
+
+# Old project files (can be removed after migration)
+sorterra-api/
+sorterra-api.sln

@@ -1,0 +1,97 @@
+services:
+  # ============================================
+  # MySQL Database
+  # ============================================
+  mysql:
+    build:
+      context: ./mysql
+      dockerfile: Dockerfile
+    container_name: sorterra-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-localdev}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sorterra_dev}
+      MYSQL_USER: ${MYSQL_USER:-sorterra}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sorterra_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - mysql_logs:/var/log/mysql
+    networks:
+      - sorterra-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-localdev}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================
+  # Sorterra API
+  # ============================================
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    container_name: sorterra-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      # Database connection
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE:-sorterra_dev};User=${MYSQL_USER:-sorterra};Password=${MYSQL_PASSWORD:-sorterra_pass};
+      # Cognito settings (override in .env file)
+      - Cognito__Region=${COGNITO_REGION:-us-west-2}
+      - Cognito__UserPoolId=${COGNITO_USER_POOL_ID}
+      - Cognito__AppClientId=${COGNITO_APP_CLIENT_ID}
+      # Graph API settings (override in .env file)
+      - Graph__TenantId=${GRAPH_TENANT_ID}
+      - Graph__ClientId=${GRAPH_CLIENT_ID}
+      - Graph__ClientSecret=${GRAPH_CLIENT_SECRET}
+      # Encryption key (use secure key in production)
+      - Encryption__TokenEncryptionKey=${TOKEN_ENCRYPTION_KEY:-dev-only-32-byte-key-change-me!}
+    ports:
+      - "5000:8080"
+    networks:
+      - sorterra-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================
+  # Adminer (Database Management UI)
+  # ============================================
+  adminer:
+    image: adminer:latest
+    container_name: sorterra-adminer
+    ports:
+      - "8081:8080"
+    networks:
+      - sorterra-network
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  sorterra-network:
+    driver: bridge
+    name: sorterra-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  mysql_data:
+    name: sorterra-mysql-data
+  mysql_logs:
+    name: sorterra-mysql-logs
