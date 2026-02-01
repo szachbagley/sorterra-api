@@ -32,20 +32,15 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# Create non-root user for security
-RUN adduser --disabled-password --gecos '' --uid 1000 appuser
-
 # Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy published application
 COPY --from=publish /app/publish .
 
-# Set ownership to non-root user
-RUN chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
+# Switch to the built-in non-root user
+USER app
 
 # Expose port (Kestrel default)
 EXPOSE 8080

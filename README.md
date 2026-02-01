@@ -32,7 +32,18 @@ sorterra-api/
 ├── src/
 │   ├── Sorterra.Api/                      # ASP.NET Core Web API
 │   │   ├── Controllers/
-│   │   │   └── HealthController.cs        # Health check endpoints
+│   │   │   ├── HealthController.cs        # Health check endpoints
+│   │   │   ├── UsersController.cs         # User CRUD
+│   │   │   ├── OrganizationsController.cs # Organization CRUD
+│   │   │   ├── UserOrganizationsController.cs
+│   │   │   ├── SharePointConnectionsController.cs
+│   │   │   ├── OAuthTokensController.cs
+│   │   │   ├── SortingRecipesController.cs
+│   │   │   ├── ProcessedFilesController.cs
+│   │   │   ├── DocumentChunksController.cs
+│   │   │   ├── ActivityLogsController.cs
+│   │   │   ├── WebhookEventsController.cs
+│   │   │   └── SearchQueriesController.cs
 │   │   ├── Middleware/                    # (placeholder for JWT middleware)
 │   │   ├── Program.cs                     # Application entry point
 │   │   ├── appsettings.json               # Production configuration
@@ -52,8 +63,19 @@ sorterra-api/
 │   │   │   ├── ActivityLog.cs
 │   │   │   ├── WebhookEvent.cs
 │   │   │   └── SearchQuery.cs
+│   │   ├── DTOs/                          # Request/response data transfer objects
+│   │   │   ├── UserDtos.cs
+│   │   │   ├── OrganizationDtos.cs
+│   │   │   ├── UserOrganizationDtos.cs
+│   │   │   ├── SharePointConnectionDtos.cs
+│   │   │   ├── OAuthTokenDtos.cs
+│   │   │   ├── SortingRecipeDtos.cs
+│   │   │   ├── ProcessedFileDtos.cs
+│   │   │   ├── DocumentChunkDtos.cs
+│   │   │   ├── ActivityLogDtos.cs
+│   │   │   ├── WebhookEventDtos.cs
+│   │   │   └── SearchQueryDtos.cs
 │   │   ├── Interfaces/                    # (placeholder for service interfaces)
-│   │   ├── DTOs/                          # (placeholder for data transfer objects)
 │   │   └── Sorterra.Core.csproj
 │   │
 │   └── Sorterra.Infrastructure/           # External service implementations
@@ -170,6 +192,8 @@ User ←→ UserOrganization ←→ Organization
 
 ### Available Endpoints
 
+#### Health Checks
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Full health check with database status |
@@ -177,21 +201,55 @@ User ←→ UserOrganization ←→ Organization
 | `/health/ready` | GET | Readiness probe (is the app ready for traffic?) |
 | `/swagger` | GET | Swagger UI for API documentation |
 
+#### CRUD APIs
+
+All CRUD endpoints follow REST conventions and use DTOs for request/response contracts. Each resource supports GET (list all), GET by ID, POST (create), PUT (update), and DELETE.
+
+| Resource | Base Route | Notes |
+|----------|-----------|-------|
+| Users | `/api/users` | |
+| Organizations | `/api/organizations` | |
+| User Organizations | `/api/userorganizations` | Composite key: `{userId}/{organizationId}` |
+| SharePoint Connections | `/api/sharepointconnections` | |
+| OAuth Tokens | `/api/oauthtokens` | Response excludes encrypted token fields |
+| Sorting Recipes | `/api/sortingrecipes` | |
+| Processed Files | `/api/processedfiles` | |
+| Document Chunks | `/api/documentchunks` | |
+| Activity Logs | `/api/activitylogs` | |
+| Webhook Events | `/api/webhookevents` | |
+| Search Queries | `/api/searchqueries` | |
+
+**Standard operations per resource:**
+
+| Method | Route | Description | Status Code |
+|--------|-------|-------------|-------------|
+| GET | `/api/{resource}` | List all | 200 |
+| GET | `/api/{resource}/{id}` | Get by ID | 200 / 404 |
+| POST | `/api/{resource}` | Create | 201 + Location header |
+| PUT | `/api/{resource}/{id}` | Update (partial) | 200 / 404 |
+| DELETE | `/api/{resource}/{id}` | Delete | 204 / 404 |
+
+**UserOrganizations** uses composite key routes instead of `{id}`:
+`GET|PUT|DELETE /api/userorganizations/{userId}/{organizationId}`
+
 ### Service URLs (Development)
 
 | Service | URL |
 |---------|-----|
-| Sorterra API | http://localhost:5000 |
-| Swagger UI | http://localhost:5000/swagger |
+| Sorterra API | http://localhost:5001 |
+| Swagger UI | http://localhost:5001/swagger |
 | Adminer (DB UI) | http://localhost:8081 |
-| MySQL | localhost:3306 |
+| MySQL | localhost:3307 |
+
+Host ports are configurable via environment variables in `docker/.env`:
+`API_HOST_PORT` (default: 5001), `MYSQL_HOST_PORT` (default: 3307).
 
 ### Database Credentials (Development)
 
 | Setting | Value |
 |---------|-------|
 | Host | localhost |
-| Port | 3306 |
+| Port | 3307 |
 | Database | sorterra_dev |
 | User | sorterra |
 | Password | sorterra_pass |

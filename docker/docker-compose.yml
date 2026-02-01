@@ -13,7 +13,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-sorterra}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sorterra_pass}
     ports:
-      - "3306:3306"
+      - "${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - mysql_logs:/var/log/mysql
@@ -51,7 +51,7 @@ services:
       # Encryption key (use secure key in production)
       - Encryption__TokenEncryptionKey=${TOKEN_ENCRYPTION_KEY:-dev-only-32-byte-key-change-me!}
     ports:
-      - "5000:8080"
+      - "${API_HOST_PORT:-5001}:8080"
     networks:
       - sorterra-network
     depends_on:
