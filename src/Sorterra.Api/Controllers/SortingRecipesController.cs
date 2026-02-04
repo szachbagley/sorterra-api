@@ -20,10 +20,43 @@ public class SortingRecipesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? organizationId, [FromQuery] bool? isActive, [FromQuery] string? orderBy)
     {
-        var entities = await _dbContext.SortingRecipes.ToListAsync();
+        var query = _dbContext.SortingRecipes.AsQueryable();
+
+        if (organizationId.HasValue)
+            query = query.Where(r => r.OrganizationId == organizationId.Value);
+
+        if (isActive.HasValue)
+            query = query.Where(r => r.IsActive == isActive.Value);
+
+        query = orderBy?.ToLowerInvariant() switch
+        {
+            "name" => query.OrderBy(r => r.Name),
+            "createdat" => query.OrderByDescending(r => r.CreatedAt),
+            _ => query.OrderBy(r => r.Priority)
+        };
+
+        var entities = await query.ToListAsync();
         return Ok(entities.Select(MapToResponse));
+    }
+
+    [HttpGet("by-connection/{connectionId}")]
+    public async Task<IActionResult> GetByConnection(Guid connectionId)
+    {
+        var connection = await _dbContext.SharePointConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == connectionId);
+
+        if (connection == null)
+            return NotFound(new { error = "Connection not found", connectionId });
+
+        var recipes = await _dbContext.SortingRecipes
+            .Where(r => r.OrganizationId == connection.OrganizationId && r.IsActive)
+            .OrderBy(r => r.Priority)
+            .ToListAsync();
+
+        return Ok(recipes.Select(MapToResponse));
     }
 
     [HttpGet("{id}")]
