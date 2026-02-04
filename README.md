@@ -86,6 +86,11 @@ sorterra-api/
 │       ├── Repositories/                  # (placeholder for data repositories)
 │       └── Sorterra.Infrastructure.csproj
 │
+├── docs/
+│   ├── TODO.md                            # Sprint backlog and task tracking
+│   ├── agent-recipe-access.md             # How the AI agent retrieves sorting recipes
+│   └── aws-lightsail-deployment.md        # ECR + Lightsail deployment guide
+│
 ├── tests/                                 # (placeholder for test projects)
 │   ├── Sorterra.Api.Tests/
 │   └── Sorterra.Infrastructure.Tests/
@@ -105,7 +110,8 @@ sorterra-api/
 │   └── .env                               # Local environment (git-ignored)
 │
 ├── .gitignore
-└── .dockerignore
+├── .dockerignore
+└── README.md
 ```
 
 ## Database Schema
@@ -212,7 +218,7 @@ All CRUD endpoints follow REST conventions and use DTOs for request/response con
 | User Organizations | `/api/userorganizations` | Composite key: `{userId}/{organizationId}` |
 | SharePoint Connections | `/api/sharepointconnections` | |
 | OAuth Tokens | `/api/oauthtokens` | Response excludes encrypted token fields |
-| Sorting Recipes | `/api/sortingrecipes` | |
+| Sorting Recipes | `/api/sortingrecipes` | Supports `?organizationId`, `?isActive`, `?orderBy` filtering |
 | Processed Files | `/api/processedfiles` | |
 | Document Chunks | `/api/documentchunks` | |
 | Activity Logs | `/api/activitylogs` | |
@@ -231,6 +237,14 @@ All CRUD endpoints follow REST conventions and use DTOs for request/response con
 
 **UserOrganizations** uses composite key routes instead of `{id}`:
 `GET|PUT|DELETE /api/userorganizations/{userId}/{organizationId}`
+
+#### Agent Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sortingrecipes/by-connection/{connectionId}` | GET | Get active recipes for a connection's organization, ordered by priority |
+
+See [`docs/agent-recipe-access.md`](docs/agent-recipe-access.md) for full details on how the AI file-sorting agent uses this endpoint.
 
 ### Service URLs (Development)
 

@@ -17,6 +17,12 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 - [x] DTOs for all 11 entities (Create, Update, Response records in `Sorterra.Core/DTOs/`)
 - [x] CRUD controllers for all 11 database tables (GET all, GET by ID, POST, PUT, DELETE)
 - [x] Dockerfile updated for .NET 10 runtime compatibility
+- [x] Docker environment verified (MySQL, API, Adminer containers healthy)
+- [x] Sample data populated across all 11 tables (multiple orgs, users, connections, recipes, processed files, etc.)
+- [x] Sorting recipes query filtering (`?organizationId`, `?isActive`, `?orderBy`)
+- [x] Agent recipe lookup endpoint (`GET /api/sortingrecipes/by-connection/{connectionId}`)
+- [x] Agent recipe access documentation (`docs/agent-recipe-access.md`)
+- [x] Documentation moved to `docs/` directory
 
 ### In Progress
 - [ ] Authentication & SharePoint integration (see Sprint 1 below)
@@ -97,8 +103,10 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 
 - [x] **BACKEND-011**: Create sorting recipes CRUD API (basic CRUD implemented)
   - [x] CRUD endpoints at `/api/sortingrecipes`
+  - [x] Implement priority ordering for recipe evaluation
+  - [x] Add query filtering by organizationId, isActive, orderBy
+  - [x] Add `GET /api/sortingrecipes/by-connection/{connectionId}` for agent access
   - [ ] Validate path templates (e.g., `/Finance/[Year]/[Month]/`)
-  - [ ] Implement priority ordering for recipe evaluation
 
 - [x] **BACKEND-012**: Implement processed files API (basic CRUD implemented)
   - [x] CRUD endpoints at `/api/processedfiles`
@@ -251,12 +259,18 @@ Each resource has GET (list), GET `{id}`, POST, PUT `{id}`, DELETE `{id}`.
 | User Organizations | `/api/userorganizations` | Done (composite key: `{userId}/{organizationId}`) |
 | SharePoint Connections | `/api/sharepointconnections` | Done |
 | OAuth Tokens | `/api/oauthtokens` | Done (response excludes encrypted fields) |
-| Sorting Recipes | `/api/sortingrecipes` | Done |
+| Sorting Recipes | `/api/sortingrecipes` | Done (+ filtering, `by-connection` endpoint) |
 | Processed Files | `/api/processedfiles` | Done |
 | Document Chunks | `/api/documentchunks` | Done |
 | Activity Logs | `/api/activitylogs` | Done |
 | Webhook Events | `/api/webhookevents` | Done |
 | Search Queries | `/api/searchqueries` | Done |
+
+### Agent Endpoints
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | `/api/sortingrecipes/by-connection/{connectionId}` | Done |
 
 ### Planned Endpoints
 
