@@ -1,12 +1,12 @@
-# AWS ECR + Lightsail Deployment
+# AWS ECR + EC2 Deployment
 
-Deploy the Sorterra API to a Lightsail instance using container images stored in ECR. This is a minimal setup for testing the agent recipe endpoint.
+Deploy the Sorterra API to an EC2 instance using container images stored in ECR. This is a minimal setup for testing the agent recipe endpoint.
 
 ## Prerequisites
 
 - AWS CLI installed and configured (`aws configure`)
 - Docker running locally
-- An AWS account with permissions for ECR and Lightsail
+- An AWS account with permissions for ECR and EC2
 
 Verify your setup:
 
@@ -52,56 +52,71 @@ Build and push from the project root (`sorterra-api/`):
 
 ```bash
 # API image
-docker build -t sorterra/api -f docker/api/Dockerfile .
+docker build --platform linux/amd64 -t sorterra/api -f docker/api/Dockerfile .
 docker tag sorterra/api:latest $ECR_BASE/sorterra/api:latest
 docker push $ECR_BASE/sorterra/api:latest
 
 # MySQL image (has schema and seed data baked in)
-docker build -t sorterra/mysql -f docker/mysql/Dockerfile docker/mysql
+docker build --platform linux/amd64 -t sorterra/mysql -f docker/mysql/Dockerfile docker/mysql
 docker tag sorterra/mysql:latest $ECR_BASE/sorterra/mysql:latest
 docker push $ECR_BASE/sorterra/mysql:latest
 ```
 
-## 3. Create a Lightsail Instance
+## 3. Create an EC2 Instance
 
-Create an Ubuntu instance. The 2 GB RAM plan ($10/mo) is sufficient for MySQL + the API.
+Create an Ubuntu instance. A `t2.micro` is free-tier eligible (1 GB RAM). This is tight for MySQL + the API, so we'll add a swap file in step 4.
 
-```bash
-aws lightsail create-instances \
-  --instance-names sorterra-test \
-  --availability-zone us-west-2a \
-  --blueprint-id ubuntu_24_04 \
-  --bundle-id medium_3_0 \
-  --region us-west-2
-```
+> If you're not on the free tier or need more headroom, use a `t3.small` (2 GB RAM, ~$15/mo) instead.
 
-Wait for the instance to be running:
+### Create a key pair
 
-```bash
-aws lightsail get-instance --instance-name sorterra-test \
-  --query 'instance.state.name' --output text
-```
-
-Open port 5001 (API) in the Lightsail firewall:
+1. Go to the [EC2 console](https://console.aws.amazon.com/ec2/) and make sure your region is set to **US West (Oregon) us-west-2** in the top-right dropdown.
+2. In the left sidebar, go to **Network & Security** → **Key Pairs**.
+3. Click **Create key pair**.
+4. Enter **sorterra-test** as the name, select **RSA** and **.pem** format.
+5. Click **Create key pair** — your browser will download `sorterra-test.pem`.
+6. Move the key and set permissions:
 
 ```bash
-aws lightsail open-instance-public-ports \
-  --instance-name sorterra-test \
-  --port-info fromPort=5001,toPort=5001,protocol=tcp
+mv ~/Downloads/sorterra-test.pem ~/.ssh/sorterra-test.pem
+chmod 400 ~/.ssh/sorterra-test.pem
 ```
 
-## 4. Set Up the Lightsail Instance
+### Launch the instance
+
+1. In the left sidebar, go to **Instances** → **Instances**, then click **Launch instances**.
+2. Under **Name**, enter **sorterra-test**.
+3. Under **Application and OS Images**, select **Ubuntu** and pick **Ubuntu Server 24.04 LTS (Free tier eligible)**.
+4. Under **Instance type**, select **t2.micro** (Free tier eligible).
+5. Under **Key pair**, select the **sorterra-test** key pair you just created.
+6. Under **Network settings**, click **Edit** and configure the security group:
+   - **Security group name**: `sorterra-test-sg`
+   - **Rule 1** (pre-filled): Type **SSH**, Port **22**, Source **My IP**
+   - Click **Add security group rule**: Type **Custom TCP**, Port **5001**, Source **Anywhere** (0.0.0.0/0)
+7. Under **Configure storage**, keep the default (8 GB gp3 is fine).
+8. Click **Launch instance**.
+
+Wait for the instance state to show **Running** on the Instances page. Note the **Public IPv4 address** — you'll need it for SSH and testing.
+
+## 4. Set Up the EC2 Instance
 
 SSH into the instance:
 
 ```bash
-ssh -i ~/.ssh/LightsailDefaultKey-us-west-2.pem ubuntu@<INSTANCE_PUBLIC_IP>
+ssh -i ~/.ssh/sorterra-test.pem ubuntu@<INSTANCE_PUBLIC_IP>
 ```
 
-> You can find the public IP with:
-> `aws lightsail get-instance --instance-name sorterra-test --query 'instance.publicIpAddress' --output text`
->
-> Download the default SSH key from the [Lightsail console](https://lightsail.aws.amazon.com/ls/webapp/account/keys) if you don't have it, or use the browser-based SSH client in the Lightsail console.
+> You can find the public IP on the **Instances** page of the [EC2 console](https://console.aws.amazon.com/ec2/), or you can use the **EC2 Instance Connect** button on the instance details page to open a browser-based terminal.
+
+### Add swap space (recommended for t2.micro)
+
+```bash
+sudo fallocate -l 1G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
 
 ### Install Docker and Docker Compose
 
@@ -243,7 +258,7 @@ docker ps
 
 ## 6. Load Sample Data
 
-The schema is created automatically by the MySQL init scripts baked into the image. To add sample data for testing, run this from the Lightsail instance:
+The schema is created automatically by the MySQL init scripts baked into the image. To add sample data for testing, run this from the EC2 instance:
 
 ```bash
 docker exec -i sorterra-mysql mysql -u sorterra -p"$(grep MYSQL_PASSWORD .env | cut -d= -f2)" sorterra_dev << 'SQL'
@@ -285,7 +300,7 @@ SQL
 
 ## 7. Test
 
-From your local machine (replace `<INSTANCE_IP>` with your Lightsail public IP):
+From your local machine (replace `<INSTANCE_IP>` with your EC2 public IP):
 
 ```bash
 # Health check
@@ -320,7 +335,7 @@ Expected response from the recipe endpoint:
 ]
 ```
 
-The agent can now call this endpoint using the Lightsail IP:
+The agent can now call this endpoint using the EC2 public IP:
 
 ```
 GET http://<INSTANCE_IP>:5001/api/sortingrecipes/by-connection/{connectionId}
@@ -332,11 +347,11 @@ When you push new code, rebuild and redeploy:
 
 ```bash
 # On your local machine: build, tag, push
-docker build -t sorterra/api -f docker/api/Dockerfile .
+docker build --platform linux/amd64 -t sorterra/api -f docker/api/Dockerfile .
 docker tag sorterra/api:latest $ECR_BASE/sorterra/api:latest
 docker push $ECR_BASE/sorterra/api:latest
 
-# On the Lightsail instance: pull and restart
+# On the EC2 instance: pull and restart
 docker compose pull api
 docker compose up -d api
 ```
@@ -346,11 +361,19 @@ docker compose up -d api
 To tear everything down:
 
 ```bash
-# On the Lightsail instance
+# On the EC2 instance
 docker compose down -v
+```
 
-# From your local machine
-aws lightsail delete-instance --instance-name sorterra-test
+Then from the [EC2 console](https://console.aws.amazon.com/ec2/):
+
+1. Go to **Instances**, select **sorterra-test**, then **Instance state** → **Terminate instance**.
+2. Go to **Network & Security** → **Security Groups**, select **sorterra-test-sg**, then **Actions** → **Delete security groups**.
+3. Go to **Network & Security** → **Key Pairs**, select **sorterra-test**, then **Actions** → **Delete**.
+
+Delete the ECR repositories:
+
+```bash
 aws ecr delete-repository --repository-name sorterra/api --force
 aws ecr delete-repository --repository-name sorterra/mysql --force
 ```
@@ -358,6 +381,7 @@ aws ecr delete-repository --repository-name sorterra/mysql --force
 ## Notes
 
 - **No authentication yet.** The API is open on port 5001. This is fine for testing with the agent, but don't expose sensitive data until Cognito JWT auth is implemented.
-- **ECR login expires after 12 hours.** If `docker compose pull` fails on the Lightsail instance, re-run the `aws ecr get-login-password` command from step 4.
+- **ECR login expires after 12 hours.** If `docker compose pull` fails on the EC2 instance, re-run the `aws ecr get-login-password` command from step 4.
 - **MySQL data persists** in the `mysql_data` Docker volume. Use `docker compose down -v` to reset it.
-- **Lightsail static IP.** By default Lightsail assigns a dynamic IP. If you need a stable IP for the agent, attach a static IP: `aws lightsail allocate-static-ip --static-ip-name sorterra-ip` then `aws lightsail attach-static-ip --static-ip-name sorterra-ip --instance-name sorterra-test`.
+- **EC2 public IP changes on reboot.** If you stop and start the instance, it gets a new public IP. To keep a stable IP, allocate an Elastic IP from the EC2 console (**Network & Security** → **Elastic IPs** → **Allocate Elastic IP address**), then associate it with your instance.
+- **Free tier limits.** The `t2.micro` free tier includes 750 hours/month for 12 months. Running one instance 24/7 uses ~720 hours, so you're covered. Stop the instance when not in use to stay well within limits.

@@ -35,3 +35,5 @@ logs/
 # Test results
 TestResults/
 coverage/
+
+*.pem
