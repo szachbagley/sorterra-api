@@ -20,22 +20,22 @@ docker --version
 Create one repository for each image (API and MySQL):
 
 ```bash
-aws ecr create-repository --repository-name sorterra/api --region us-west-2
-aws ecr create-repository --repository-name sorterra/mysql --region us-west-2
+aws ecr create-repository --repository-name sorterra-api --region us-east-1
+aws ecr create-repository --repository-name sorterra-mysql --region us-east-1
 ```
 
 Note the `repositoryUri` from each output. They'll look like:
 
 ```
-<ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/sorterra/api
-<ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/sorterra/mysql
+<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/sorterra-api
+<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/sorterra-mysql
 ```
 
 Set these as variables for the remaining steps:
 
 ```bash
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=us-west-2
+export AWS_REGION=us-east-1
 export ECR_BASE=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 ```
 
@@ -52,14 +52,14 @@ Build and push from the project root (`sorterra-api/`):
 
 ```bash
 # API image
-docker build --platform linux/amd64 -t sorterra/api -f docker/api/Dockerfile .
-docker tag sorterra/api:latest $ECR_BASE/sorterra/api:latest
-docker push $ECR_BASE/sorterra/api:latest
+docker build --platform linux/amd64 -t sorterra-api -f docker/api/Dockerfile .
+docker tag sorterra-api:latest $ECR_BASE/sorterra-api:latest
+docker push $ECR_BASE/sorterra-api:latest
 
 # MySQL image (has schema and seed data baked in)
-docker build --platform linux/amd64 -t sorterra/mysql -f docker/mysql/Dockerfile docker/mysql
-docker tag sorterra/mysql:latest $ECR_BASE/sorterra/mysql:latest
-docker push $ECR_BASE/sorterra/mysql:latest
+docker build --platform linux/amd64 -t sorterra-mysql -f docker/mysql/Dockerfile docker/mysql
+docker tag sorterra-mysql:latest $ECR_BASE/sorterra-mysql:latest
+docker push $ECR_BASE/sorterra-mysql:latest
 ```
 
 ## 3. Create an EC2 Instance
@@ -70,7 +70,7 @@ Create an Ubuntu instance. A `t2.micro` is free-tier eligible (1 GB RAM). This i
 
 ### Create a key pair
 
-1. Go to the [EC2 console](https://console.aws.amazon.com/ec2/) and make sure your region is set to **US West (Oregon) us-west-2** in the top-right dropdown.
+1. Go to the [EC2 console](https://console.aws.amazon.com/ec2/) and make sure your region is set to **US West (Oregon) us-east-1** in the top-right dropdown.
 2. In the left sidebar, go to **Network & Security** → **Key Pairs**.
 3. Click **Create key pair**.
 4. Enter **sorterra-test** as the name, select **RSA** and **.pem** format.
@@ -139,14 +139,14 @@ docker compose version
 ```bash
 sudo apt-get install -y awscli
 aws configure
-# Enter your Access Key ID, Secret Access Key, region (us-west-2), and output format (json)
+# Enter your Access Key ID, Secret Access Key, region (us-east-1), and output format (json)
 ```
 
 ### Authenticate Docker with ECR
 
 ```bash
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=us-west-2
+export AWS_REGION=us-east-1
 export ECR_BASE=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
 aws ecr get-login-password --region $AWS_REGION | \
@@ -184,7 +184,7 @@ Create the `docker-compose.yml` (replace `<ACCOUNT_ID>` with your AWS account ID
 cat > docker-compose.yml << EOF
 services:
   mysql:
-    image: $ECR_BASE/sorterra/mysql:latest
+    image: $ECR_BASE/sorterra-mysql:latest
     container_name: sorterra-mysql
     environment:
       MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD}
@@ -204,7 +204,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: $ECR_BASE/sorterra/api:latest
+    image: $ECR_BASE/sorterra-api:latest
     container_name: sorterra-api
     environment:
       - ASPNETCORE_ENVIRONMENT=\${ASPNETCORE_ENVIRONMENT}
@@ -347,9 +347,9 @@ When you push new code, rebuild and redeploy:
 
 ```bash
 # On your local machine: build, tag, push
-docker build --platform linux/amd64 -t sorterra/api -f docker/api/Dockerfile .
-docker tag sorterra/api:latest $ECR_BASE/sorterra/api:latest
-docker push $ECR_BASE/sorterra/api:latest
+docker build --platform linux/amd64 -t sorterra-api -f docker/api/Dockerfile .
+docker tag sorterra-api:latest $ECR_BASE/sorterra-api:latest
+docker push $ECR_BASE/sorterra-api:latest
 
 # On the EC2 instance: pull and restart
 docker compose pull api
@@ -374,8 +374,8 @@ Then from the [EC2 console](https://console.aws.amazon.com/ec2/):
 Delete the ECR repositories:
 
 ```bash
-aws ecr delete-repository --repository-name sorterra/api --force
-aws ecr delete-repository --repository-name sorterra/mysql --force
+aws ecr delete-repository --repository-name sorterra-api --force
+aws ecr delete-repository --repository-name sorterra-mysql --force
 ```
 
 ## Notes
