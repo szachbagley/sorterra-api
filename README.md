@@ -19,6 +19,7 @@ Sorterra solves the problem of disorganized cloud storage by:
 | Database | MySQL 8.0 |
 | ORM | Entity Framework Core 9.0 + Pomelo MySQL |
 | Authentication | Amazon Cognito (planned) |
+| Deployment | AWS ECS Fargate |
 | External API | Microsoft Graph API for SharePoint |
 | Logging | Serilog |
 | API Documentation | Swagger/OpenAPI |
@@ -89,7 +90,10 @@ sorterra-api/
 ├── docs/
 │   ├── TODO.md                            # Sprint backlog and task tracking
 │   ├── agent-recipe-access.md             # How the AI agent retrieves sorting recipes
-│   └── aws-lightsail-deployment.md        # ECR + Lightsail deployment guide
+│   ├── api-reference.md                   # Full API reference documentation
+│   ├── aws-ec2-deployment.md              # ECR + EC2 deployment guide (legacy)
+│   ├── aws-ecs-fargate-deployment.md      # ECR + ECS Fargate deployment guide (current)
+│   └── aws-infrastructure.md              # AWS infrastructure diagram and reference
 │
 ├── tests/                                 # (placeholder for test projects)
 │   ├── Sorterra.Api.Tests/

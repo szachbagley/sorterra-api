@@ -23,6 +23,17 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 - [x] Agent recipe lookup endpoint (`GET /api/sortingrecipes/by-connection/{connectionId}`)
 - [x] Agent recipe access documentation (`docs/agent-recipe-access.md`)
 - [x] Documentation moved to `docs/` directory
+- [x] API reference documentation (`docs/api-reference.md`)
+- [x] AWS EC2 deployment guide (`docs/aws-ec2-deployment.md`)
+- [x] AWS ECS Fargate deployment guide (`docs/aws-ecs-fargate-deployment.md`)
+- [x] AWS infrastructure documentation (`docs/aws-infrastructure.md`)
+- [x] ECS Fargate deployment (API + MySQL containers live on AWS)
+- [x] ECR repositories for API and MySQL images
+- [x] Application Load Balancer with health checks
+- [x] EFS persistent storage for MySQL
+- [x] Cloud Map service discovery (`sorterra.local` namespace)
+- [x] CloudWatch logging for ECS containers
+- [x] IAM execution and task roles for ECS
 
 ### In Progress
 - [ ] Authentication & SharePoint integration (see Sprint 1 below)
@@ -180,18 +191,20 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 
 ## Infrastructure Tasks
 
-### Docker
-- [ ] **DOCKER-006**: Prepare production container configuration
-  - Create `docker-compose.prod.yml` with production settings
-  - Configure AWS CloudWatch logging
-  - Set resource limits (CPU, memory)
-  - Document AWS ECS task definition
+### Docker & Deployment
+- [x] **DOCKER-006**: Production container configuration
+  - [x] ECS Fargate task definitions for API (256 CPU / 512 MB) and MySQL (512 CPU / 1024 MB)
+  - [x] AWS CloudWatch logging (`/ecs/sorterra-api`, `/ecs/sorterra-mysql`)
+  - [x] Resource limits configured in task definitions
+  - [x] ALB with health check routing
+  - [x] EFS volume for MySQL data persistence
+  - [x] Cloud Map service discovery for inter-container networking
 
 ### CI/CD (Coordinate with McKay)
 - [ ] Set up GitHub Actions for:
   - Build and test on PR
   - Docker image build and push to ECR
-  - Deployment to ECS Fargate
+  - Automated deployment to ECS Fargate
 
 ---
 
@@ -233,7 +246,7 @@ These topics need investigation before implementation:
 | Team Member | You Need From Them | They Need From You |
 |-------------|-------------------|-------------------|
 | **Patrick** | API endpoint specs for frontend | JSON response formats, error codes |
-| **McKay** | AWS VPC, RDS, S3 buckets | Database connection strings, container specs |
+| **McKay** | CI/CD pipeline, production domain/SSL | ECS task definitions, deployment docs |
 | **Nate/Caleb** | Embedding model choice, vector dimensions | Database ready for embeddings, vector search strategy |
 
 ---
