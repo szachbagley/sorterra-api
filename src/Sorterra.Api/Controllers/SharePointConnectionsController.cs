@@ -43,7 +43,11 @@ public class SharePointConnectionsController : ControllerBase
             OrganizationId = dto.OrganizationId,
             SiteUrl = dto.SiteUrl,
             TenantId = dto.TenantId,
+            ClientId = dto.ClientId,
+            Thumbprint = dto.Thumbprint,
+            PrivateKeyPath = dto.PrivateKeyPath,
             DriveId = dto.DriveId,
+            SourceFolder = dto.SourceFolder,
             ConnectionStatus = dto.ConnectionStatus ?? "pending",
             CreatedBy = dto.CreatedBy,
             CreatedAt = DateTime.UtcNow,
@@ -63,7 +67,11 @@ public class SharePointConnectionsController : ControllerBase
 
         if (dto.SiteUrl is not null) entity.SiteUrl = dto.SiteUrl;
         if (dto.TenantId is not null) entity.TenantId = dto.TenantId;
+        if (dto.ClientId is not null) entity.ClientId = dto.ClientId;
+        if (dto.Thumbprint is not null) entity.Thumbprint = dto.Thumbprint;
+        if (dto.PrivateKeyPath is not null) entity.PrivateKeyPath = dto.PrivateKeyPath;
         if (dto.DriveId is not null) entity.DriveId = dto.DriveId;
+        if (dto.SourceFolder is not null) entity.SourceFolder = dto.SourceFolder;
         if (dto.ConnectionStatus is not null) entity.ConnectionStatus = dto.ConnectionStatus;
         if (dto.LastSyncAt is not null) entity.LastSyncAt = dto.LastSyncAt;
         if (dto.WebhookSubscriptionId is not null) entity.WebhookSubscriptionId = dto.WebhookSubscriptionId;
@@ -91,7 +99,11 @@ public class SharePointConnectionsController : ControllerBase
         entity.OrganizationId,
         entity.SiteUrl,
         entity.TenantId,
+        entity.ClientId,
+        entity.Thumbprint,
+        entity.PrivateKeyPath,
         entity.DriveId,
+        entity.SourceFolder,
         entity.ConnectionStatus,
         entity.LastSyncAt,
         entity.WebhookSubscriptionId,

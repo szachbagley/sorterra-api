@@ -6,7 +6,11 @@ public class SharePointConnection
     public Guid OrganizationId { get; set; }
     public string SiteUrl { get; set; } = string.Empty;
     public string? TenantId { get; set; }
+    public string? ClientId { get; set; }
+    public string? Thumbprint { get; set; }
+    public string? PrivateKeyPath { get; set; }
     public string? DriveId { get; set; }
+    public string? SourceFolder { get; set; }
     public string ConnectionStatus { get; set; } = "pending";
     public DateTime? LastSyncAt { get; set; }
     public string? WebhookSubscriptionId { get; set; }

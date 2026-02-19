@@ -82,7 +82,11 @@ public class SorterraDbContext : DbContext
             entity.Property(e => e.OrganizationId).HasColumnName("organization_id").HasColumnType("char(36)");
             entity.Property(e => e.SiteUrl).HasColumnName("site_url").HasMaxLength(512).IsRequired();
             entity.Property(e => e.TenantId).HasColumnName("tenant_id").HasMaxLength(255);
+            entity.Property(e => e.ClientId).HasColumnName("client_id").HasMaxLength(255);
+            entity.Property(e => e.Thumbprint).HasColumnName("thumbprint").HasMaxLength(255);
+            entity.Property(e => e.PrivateKeyPath).HasColumnName("private_key_path").HasMaxLength(512);
             entity.Property(e => e.DriveId).HasColumnName("drive_id").HasMaxLength(255);
+            entity.Property(e => e.SourceFolder).HasColumnName("source_folder").HasMaxLength(1024);
             entity.Property(e => e.ConnectionStatus).HasColumnName("connection_status").HasMaxLength(50);
             entity.Property(e => e.LastSyncAt).HasColumnName("last_sync_at");
             entity.Property(e => e.WebhookSubscriptionId).HasColumnName("webhook_subscription_id").HasMaxLength(255);

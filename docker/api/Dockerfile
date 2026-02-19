@@ -1,7 +1,7 @@
 # ============================================
-# Stage 1: Build
+# Stage 1: Build & Publish
 # ============================================
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.102 AS build
 WORKDIR /src
 
 # Copy solution and project files first (better layer caching)
@@ -16,18 +16,14 @@ RUN dotnet restore
 # Copy all source code
 COPY src/ src/
 
-# Build the application
-WORKDIR /src/src/Sorterra.Api
-RUN dotnet build -c Release -o /app/build
+# Clean up stale build artifacts from host
+RUN rm -rf src/Sorterra.Api/bin* src/Sorterra.Api/obj src/Sorterra.Core/bin* src/Sorterra.Core/obj src/Sorterra.Infrastructure/bin* src/Sorterra.Infrastructure/obj
+
+# Publish the application
+RUN dotnet publish src/Sorterra.Api/Sorterra.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 # ============================================
-# Stage 2: Publish
-# ============================================
-FROM build AS publish
-RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
-
-# ============================================
-# Stage 3: Production Runtime
+# Stage 2: Production Runtime
 # ============================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
@@ -37,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy published application
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 
 # Switch to the built-in non-root user
 USER app
