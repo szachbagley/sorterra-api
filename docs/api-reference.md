@@ -1,6 +1,6 @@
 # Sorterra API Reference
 
-**Base URL**: `http://52.27.234.71:5001`
+**Base URL**: `http://35.175.101.240`
 
 The API follows REST conventions. All request and response bodies use JSON (`Content-Type: application/json`). IDs are UUIDs. Timestamps are UTC in ISO 8601 format.
 

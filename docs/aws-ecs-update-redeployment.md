@@ -69,7 +69,7 @@ ECS caches the `:latest` tag. Force a new deployment to pull the updated image:
 # Redeploy the API
 aws ecs update-service \
   --cluster sorterra \
-  --service sorterra-api \
+  --service sorterra-api-v2 \
   --force-new-deployment \
   --region $AWS_REGION
 ```
@@ -91,7 +91,7 @@ aws ecs update-service \
 ```bash
 aws ecs wait services-stable \
   --cluster sorterra \
-  --services sorterra-api \
+  --services sorterra-api-v2 \
   --region $AWS_REGION
 
 echo "API deployment complete"
@@ -262,28 +262,19 @@ Type `exit` when done.
 
 ## 5. Verify the Deployment
 
-Get the ALB DNS name:
-
-```bash
-ALB_DNS=$(aws elbv2 describe-load-balancers \
-  --names sorterra-alb \
-  --query "LoadBalancers[0].DNSName" --output text \
-  --region $AWS_REGION)
-
-echo "ALB: http://$ALB_DNS"
-```
+The API is accessible via the NLB's static Elastic IPs: `35.175.101.240` and `3.230.81.125`.
 
 Test the endpoints:
 
 ```bash
 # Health check
-curl -s http://$ALB_DNS/health | python3 -m json.tool
+curl -s http://35.175.101.240/health | python3 -m json.tool
 
 # List SharePoint connections (verify new fields appear)
-curl -s http://$ALB_DNS/api/sharepointconnections | python3 -m json.tool
+curl -s http://35.175.101.240/api/sharepointconnections | python3 -m json.tool
 
 # Agent recipe endpoint
-curl -s http://$ALB_DNS/api/sortingrecipes/by-connection/{connectionId} | python3 -m json.tool
+curl -s http://35.175.101.240/api/sortingrecipes/by-connection/{connectionId} | python3 -m json.tool
 ```
 
 ## 6. View Logs
@@ -304,7 +295,7 @@ If the new deployment is unhealthy, ECS automatically keeps the old task running
 # Check current task status
 aws ecs describe-services \
   --cluster sorterra \
-  --services sorterra-api \
+  --services sorterra-api-v2 \
   --query "services[0].{desired: desiredCount, running: runningCount, pending: pendingCount, deployments: deployments[*].{status: status, running: runningCount, desired: desiredCount, rollout: rolloutState}}" \
   --output json --region $AWS_REGION
 ```
@@ -320,7 +311,7 @@ docker push $ECR_BASE/sorterra-api:latest
 
 aws ecs update-service \
   --cluster sorterra \
-  --service sorterra-api \
+  --service sorterra-api-v2 \
   --force-new-deployment \
   --region $AWS_REGION
 ```

@@ -413,46 +413,70 @@ echo "MySQL service is stable"
 
 This can take 2–3 minutes. You can also check the status in the [ECS console](https://console.aws.amazon.com/ecs/).
 
-## 9. Create the Application Load Balancer
+## 9. Create the Network Load Balancer
 
-The ALB sits in the public subnets and uses the existing ALB security group. The existing SG allows HTTPS (443) inbound. We'll also add an HTTP (80) listener for testing.
+The NLB sits in the public subnets with Elastic IPs for stable, static IP addresses.
 
-Add an HTTP inbound rule to the ALB security group:
+Allocate Elastic IPs (one per AZ):
+
+```bash
+export EIP_1A=$(aws ec2 allocate-address --domain vpc --region $AWS_REGION \
+  --query "AllocationId" --output text)
+export EIP_1B=$(aws ec2 allocate-address --domain vpc --region $AWS_REGION \
+  --query "AllocationId" --output text)
+
+# Tag them
+aws ec2 create-tags --resources $EIP_1A --tags \
+  Key=Name,Value=sorterra-Dev-eip-nlb-1a Key=Project,Value=Sorterra Key=Environment,Value=Dev \
+  --region $AWS_REGION
+aws ec2 create-tags --resources $EIP_1B --tags \
+  Key=Name,Value=sorterra-Dev-eip-nlb-1b Key=Project,Value=Sorterra Key=Environment,Value=Dev \
+  --region $AWS_REGION
+
+echo "EIP 1a: $EIP_1A"
+echo "EIP 1b: $EIP_1B"
+```
+
+Update the API security group to allow traffic from all sources (NLB passes through client IPs):
 
 ```bash
 aws ec2 authorize-security-group-ingress \
-  --group-id $ALB_SG \
-  --protocol tcp --port 80 --cidr 0.0.0.0/0 \
+  --group-id $API_SG \
+  --protocol tcp --port 8080 --cidr 0.0.0.0/0 \
   --region $AWS_REGION
 ```
 
-Create the ALB in the public subnets:
+Create the NLB with Elastic IPs:
 
 ```bash
-export ALB_ARN=$(aws elbv2 create-load-balancer \
-  --name sorterra-alb \
-  --subnets $PUBLIC_SUBNET_1A $PUBLIC_SUBNET_1B \
-  --security-groups $ALB_SG \
+export NLB_ARN=$(aws elbv2 create-load-balancer \
+  --name sorterra-nlb \
+  --type network \
   --scheme internet-facing \
-  --type application \
+  --subnet-mappings "SubnetId=$PUBLIC_SUBNET_1A,AllocationId=$EIP_1A" \
+                    "SubnetId=$PUBLIC_SUBNET_1B,AllocationId=$EIP_1B" \
   --query "LoadBalancers[0].LoadBalancerArn" --output text --region $AWS_REGION)
 
-export ALB_DNS=$(aws elbv2 describe-load-balancers \
-  --load-balancer-arns $ALB_ARN \
-  --query "LoadBalancers[0].DNSName" --output text --region $AWS_REGION)
+# Get the Elastic IP addresses
+EIP_1A_IP=$(aws ec2 describe-addresses --allocation-ids $EIP_1A --region $AWS_REGION \
+  --query "Addresses[0].PublicIp" --output text)
+EIP_1B_IP=$(aws ec2 describe-addresses --allocation-ids $EIP_1B --region $AWS_REGION \
+  --query "Addresses[0].PublicIp" --output text)
 
-echo "ALB DNS: $ALB_DNS"
+echo "NLB ARN: $NLB_ARN"
+echo "Static IPs: $EIP_1A_IP, $EIP_1B_IP"
 ```
 
-Create a target group for the API:
+Create a TCP target group with an HTTP health check:
 
 ```bash
 export TG_ARN=$(aws elbv2 create-target-group \
-  --name sorterra-api-tg \
-  --protocol HTTP \
+  --name sorterra-api-nlb-tg \
+  --protocol TCP \
   --port 8080 \
   --vpc-id $VPC_ID \
   --target-type ip \
+  --health-check-protocol HTTP \
   --health-check-path /health/live \
   --health-check-interval-seconds 30 \
   --healthy-threshold-count 2 \
@@ -462,12 +486,12 @@ export TG_ARN=$(aws elbv2 create-target-group \
 echo "Target Group: $TG_ARN"
 ```
 
-Create a listener that forwards port 80 to the target group:
+Create a TCP listener on port 80:
 
 ```bash
 aws elbv2 create-listener \
-  --load-balancer-arn $ALB_ARN \
-  --protocol HTTP \
+  --load-balancer-arn $NLB_ARN \
+  --protocol TCP \
   --port 80 \
   --default-actions Type=forward,TargetGroupArn=$TG_ARN \
   --region $AWS_REGION
@@ -475,12 +499,12 @@ aws elbv2 create-listener \
 
 ## 10. Deploy the API Service
 
-The API runs in private subnets behind the ALB:
+The API runs in private subnets behind the NLB:
 
 ```bash
 aws ecs create-service \
   --cluster sorterra \
-  --service-name sorterra-api \
+  --service-name sorterra-api-v2 \
   --task-definition sorterra-api \
   --desired-count 1 \
   --launch-type FARGATE \
@@ -495,7 +519,7 @@ Wait for the API to stabilize:
 ```bash
 aws ecs wait services-stable \
   --cluster sorterra \
-  --services sorterra-api \
+  --services sorterra-api-v2 \
   --region $AWS_REGION
 
 echo "API service is stable"
@@ -595,25 +619,25 @@ Type `exit` to leave the container.
 
 ## 12. Test
 
-The API is reachable through the ALB DNS name:
+The API is reachable through the NLB's Elastic IPs:
 
 ```bash
-# Health check
-curl http://$ALB_DNS/health
+# Health check (use either Elastic IP)
+curl http://$EIP_1A_IP/health
 
 # Get recipes by connection (the endpoint the agent uses)
-curl http://$ALB_DNS/api/sortingrecipes/by-connection/44444444-4444-4444-4444-444444444444
+curl http://$EIP_1A_IP/api/sortingrecipes/by-connection/44444444-4444-4444-4444-444444444444
 ```
 
 Expected responses are the same as in the [EC2 deployment guide](aws-ec2-deployment.md#7-test).
 
-The agent can now call this endpoint using the ALB DNS name:
+The agent can now call this endpoint using the static IP:
 
 ```
-GET http://<ALB_DNS>/api/sortingrecipes/by-connection/{connectionId}
+GET http://<ELASTIC_IP>/api/sortingrecipes/by-connection/{connectionId}
 ```
 
-> The ALB DNS name is stable — unlike EC2 public IPs, it doesn't change on restarts.
+> The Elastic IPs are static and will not change across restarts or redeployments.
 
 ## Updating the Deployment
 
@@ -628,7 +652,7 @@ docker push $ECR_BASE/sorterra-api:latest
 # Force ECS to pull the new image and restart
 aws ecs update-service \
   --cluster sorterra \
-  --service sorterra-api \
+  --service sorterra-api-v2 \
   --force-new-deployment \
   --region $AWS_REGION
 ```
@@ -669,17 +693,19 @@ Delete the resources created by this guide. The existing VPC, subnets, and secur
 
 ```bash
 # 1. Delete ECS services
-aws ecs update-service --cluster sorterra --service sorterra-api --desired-count 0 --region $AWS_REGION
+aws ecs update-service --cluster sorterra --service sorterra-api-v2 --desired-count 0 --region $AWS_REGION
 aws ecs update-service --cluster sorterra --service sorterra-mysql --desired-count 0 --region $AWS_REGION
-aws ecs delete-service --cluster sorterra --service sorterra-api --force --region $AWS_REGION
+aws ecs delete-service --cluster sorterra --service sorterra-api-v2 --force --region $AWS_REGION
 aws ecs delete-service --cluster sorterra --service sorterra-mysql --force --region $AWS_REGION
 
-# 2. Delete the ALB, listener, and target group
-LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $ALB_ARN \
+# 2. Delete the NLB, listener, target group, and Elastic IPs
+LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $NLB_ARN \
   --query "Listeners[0].ListenerArn" --output text --region $AWS_REGION)
 aws elbv2 delete-listener --listener-arn $LISTENER_ARN --region $AWS_REGION
 aws elbv2 delete-target-group --target-group-arn $TG_ARN --region $AWS_REGION
-aws elbv2 delete-load-balancer --load-balancer-arn $ALB_ARN --region $AWS_REGION
+aws elbv2 delete-load-balancer --load-balancer-arn $NLB_ARN --region $AWS_REGION
+aws ec2 release-address --allocation-id $EIP_1A --region $AWS_REGION
+aws ec2 release-address --allocation-id $EIP_1B --region $AWS_REGION
 
 # 3. Delete ECS cluster (wait a minute for services to drain)
 sleep 60
@@ -710,10 +736,10 @@ aws ec2 revoke-security-group-ingress \
   --protocol tcp --port 3306 --source-group $API_SG \
   --region $AWS_REGION
 
-# 9. Remove the HTTP rule from the ALB security group
+# 9. Remove the NLB traffic rule from the API security group
 aws ec2 revoke-security-group-ingress \
-  --group-id $ALB_SG \
-  --protocol tcp --port 80 --cidr 0.0.0.0/0 \
+  --group-id $API_SG \
+  --protocol tcp --port 8080 --cidr 0.0.0.0/0 \
   --region $AWS_REGION
 
 # 10. Delete CloudWatch log groups
@@ -744,13 +770,13 @@ aws ecr delete-repository --repository-name sorterra-mysql --force --region $AWS
 - **EFS performance.** EFS with bursting throughput is fine for light workloads. If MySQL performance is slow, switch to provisioned throughput or migrate to RDS.
 - **Cost.** Fargate pricing is based on vCPU and memory per second. The setup in this guide (0.25 vCPU + 0.5 GB for API, 0.5 vCPU + 1 GB for MySQL) costs roughly **~$25–30/month** running 24/7. Stop the services when not in use by setting desired count to 0:
   ```bash
-  aws ecs update-service --cluster sorterra --service sorterra-api --desired-count 0 --region $AWS_REGION
+  aws ecs update-service --cluster sorterra --service sorterra-api-v2 --desired-count 0 --region $AWS_REGION
   aws ecs update-service --cluster sorterra --service sorterra-mysql --desired-count 0 --region $AWS_REGION
   ```
   Restart by setting desired count back to 1.
 - **NAT gateway cost.** The existing NAT gateway costs ~$32/month plus data transfer. This is needed for private subnet containers to pull ECR images and reach the internet.
-- **Scaling.** To run multiple API containers behind the ALB, change `--desired-count` to 2 or more. The ALB distributes traffic automatically. Don't scale MySQL this way — use RDS with read replicas instead.
-- **HTTPS.** The ALB security group already allows HTTPS (443). To use it, request a certificate from ACM, add an HTTPS listener on port 443 to the ALB, and remove the HTTP listener (or redirect 80 to 443).
+- **Scaling.** To run multiple API containers behind the NLB, change `--desired-count` to 2 or more. The NLB distributes traffic automatically. Don't scale MySQL this way — use RDS with read replicas instead.
+- **HTTPS.** To add HTTPS, request a certificate from ACM, add a TLS listener on port 443 to the NLB, and optionally remove the TCP listener on port 80.
 
 ## Using Secrets Manager (optional)
 

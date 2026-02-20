@@ -12,16 +12,16 @@ This document describes the AWS infrastructure that runs the Sorterra API and da
                             │  │  VPC: sorterra-Dev-vpc (vpc-0d3a8af5cb4da7000)                │  │
                             │  │  CIDR: 10.20.0.0/16                                           │  │
                             │  │                                                               │  │
-┌──────────┐   HTTP/443     │  │  ┌─────────────────────────────────────────────────────────┐  │  │
-│          │   HTTP/80      │  │  │  Public Subnets                                         │  │  │
-│ Internet │ ──────────────►│  │  │                                                         │  │  │
+┌──────────┐   TCP/80       │  │  ┌─────────────────────────────────────────────────────────┐  │  │
+│          │ ──────────────►│  │  │  Public Subnets                                         │  │  │
+│ Internet │                │  │  │                                                         │  │  │
 │          │                │  │  │  ┌─────────────────────┐  ┌─────────────────────┐       │  │  │
 └──────────┘                │  │  │  │ us-east-1a          │  │ us-east-1b          │       │  │  │
      ▲                      │  │  │  │ 10.20.0.0/24        │  │ 10.20.1.0/24        │       │  │  │
      │                      │  │  │  │                     │  │                     │       │  │  │
      │                      │  │  │  │  ┌──────────────────┴──┴──────────────────┐  │       │  │  │
-     │                      │  │  │  │  │  ALB: sorterra-alb                     │  │       │  │  │
-     │                      │  │  │  │  │  sg-alb: 80, 443 from 0.0.0.0/0       │  │       │  │  │
+     │                      │  │  │  │  │  NLB: sorterra-nlb                     │  │       │  │  │
+     │                      │  │  │  │  │  EIP: 35.175.101.240 / 3.230.81.125   │  │       │  │  │
      │                      │  │  │  │  └──────────────┬─────────────────────────┘  │       │  │  │
      │                      │  │  │  │                 │ :8080                      │       │  │  │
      │                      │  │  │  │  ┌──────────┐   │                            │       │  │  │
@@ -110,7 +110,7 @@ The VPC has two availability zones (us-east-1a and us-east-1b) with public and p
 
 ### Routing
 
-**Public subnets** route `0.0.0.0/0` through the internet gateway (`igw-0dd684804fa2e5b81`), giving direct internet access to the ALB.
+**Public subnets** route `0.0.0.0/0` through the internet gateway (`igw-0dd684804fa2e5b81`), giving direct internet access to the NLB.
 
 **Private subnets** route `0.0.0.0/0` through the NAT gateway (`nat-0c9800f017de238da`, Elastic IP `98.91.120.32`), which sits in the public subnet in us-east-1a. This allows containers in private subnets to make outbound requests (pull ECR images, call external APIs) without being directly reachable from the internet.
 
@@ -121,34 +121,32 @@ The VPC has two availability zones (us-east-1a and us-east-1b) with public and p
 
 ## Security Groups
 
-All security groups are in the Sorterra VPC. Traffic flows through them in a chain: Internet → ALB → API → Database.
+All security groups are in the Sorterra VPC. Traffic flows through them in a chain: Internet → NLB → API → Database.
 
 ### Traffic Flow
 
 ```
-Internet ──► sg-alb ──► sg-api ──► sg-rds ──► sg-efs
-             :80/443     :8080      :3306      :2049
+Internet ──► NLB (EIPs) ──► sg-api ──► sg-rds ──► sg-efs
+             :80             :8080      :3306      :2049
 ```
 
 ### Rules
 
 #### `sorterra-Dev-sg-alb` (`sg-095bbfe1f473c119d`)
 
-The ALB security group. Only internet-facing entry point.
+Legacy ALB security group. No longer actively used (NLB replaced the ALB). Retained for potential future HTTPS listener.
 
 | Direction | Port | Protocol | Source/Destination | Purpose |
 |-----------|------|----------|--------------------|---------|
-| Inbound | 80 | TCP | `0.0.0.0/0` | HTTP from internet |
-| Inbound | 443 | TCP | `0.0.0.0/0` | HTTPS from internet |
-| Outbound | 8080 | TCP | `sg-api` | Forward to API containers |
+| Inbound | 443 | TCP | `0.0.0.0/0` | HTTPS from internet (reserved) |
 
 #### `sorterra-Dev-sg-api` (`sg-0d557c9256b77a88b`)
 
-The API container security group. Only accepts traffic from the ALB.
+The API container security group. Accepts traffic from the NLB (which passes through client IPs, so the rule allows all sources).
 
 | Direction | Port | Protocol | Source/Destination | Purpose |
 |-----------|------|----------|--------------------|---------|
-| Inbound | 8080 | TCP | `sg-alb` | Traffic from ALB |
+| Inbound | 8080 | TCP | `0.0.0.0/0` | Traffic from NLB (client IPs pass through) |
 | Outbound | All | All | `0.0.0.0/0` | Internet via NAT (ECR, external APIs) |
 
 #### `sorterra-Dev-sg-rds` (`sg-07251ea351d2a9d49`)
@@ -191,7 +189,7 @@ Reserved for background job containers (not yet in use).
 
 | Property | Value |
 |----------|-------|
-| Service name | `sorterra-api` |
+| Service name | `sorterra-api-v2` |
 | Task definition | `sorterra-api:1` |
 | Launch type | Fargate |
 | Desired count | 1 |
@@ -204,7 +202,7 @@ Reserved for background job containers (not yet in use).
 | Public IP | Disabled |
 | ECS Exec | Enabled |
 
-The API container runs ASP.NET Core (.NET 10) and connects to MySQL via the Cloud Map DNS name `mysql.sorterra.local:3306`. It exposes port 8080 for HTTP traffic from the ALB.
+The API container runs ASP.NET Core (.NET 10) and connects to MySQL via the Cloud Map DNS name `mysql.sorterra.local:3306`. It exposes port 8080 for HTTP traffic from the NLB.
 
 **Environment variables:**
 
@@ -243,26 +241,36 @@ The MySQL 8.0 container has the database schema and seed data baked into its ima
 
 | Property | Value |
 |----------|-------|
-| Name | `sorterra-alb` |
-| Type | Application Load Balancer |
+| Name | `sorterra-nlb` |
+| Type | Network Load Balancer |
 | Scheme | Internet-facing |
-| DNS | `sorterra-alb-914783819.us-east-1.elb.amazonaws.com` |
+| DNS | `sorterra-nlb-9fa5386ff7274b76.elb.us-east-1.amazonaws.com` |
 | Subnets | Public 1a, Public 1b |
-| Security group | `sg-alb` |
+| Elastic IPs | `35.175.101.240` (us-east-1a), `3.230.81.125` (us-east-1b) |
+
+The NLB provides two static IP addresses (one per AZ) for stable API access. Unlike the previous ALB, the NLB operates at layer 4 (TCP) and passes client IPs through to the API containers.
+
+### Elastic IPs
+
+| Allocation ID | Public IP | AZ | Name |
+|--------------|-----------|-----|------|
+| `eipalloc-0be3a5d39704ea8f8` | `35.175.101.240` | us-east-1a | `sorterra-Dev-eip-nlb-1a` |
+| `eipalloc-077c43d615080bcb2` | `3.230.81.125` | us-east-1b | `sorterra-Dev-eip-nlb-1b` |
 
 ### Listener
 
 | Port | Protocol | Action |
 |------|----------|--------|
-| 80 | HTTP | Forward to `sorterra-api-tg` |
+| 80 | TCP | Forward to `sorterra-api-nlb-tg` |
 
-### Target Group: `sorterra-api-tg`
+### Target Group: `sorterra-api-nlb-tg`
 
 | Property | Value |
 |----------|-------|
 | Target type | IP (required for Fargate `awsvpc` networking) |
-| Protocol | HTTP |
+| Protocol | TCP |
 | Port | 8080 |
+| Health check protocol | HTTP |
 | Health check path | `/health/live` |
 | Health check interval | 30s |
 | Healthy threshold | 2 consecutive checks |
@@ -359,16 +367,15 @@ aws logs tail /ecs/sorterra-mysql --since 30m --follow --region us-east-1
 A request from the internet to the API follows this path:
 
 ```
-1. Client sends request to sorterra-alb-914783819.us-east-1.elb.amazonaws.com
-2. DNS resolves to the ALB's public IP in one of the public subnets
-3. ALB listener on port 80 receives the request
-4. ALB forwards to a healthy target in sorterra-api-tg (API container IP on port 8080)
-5. Traffic crosses from public subnet (ALB) to private subnet (API) within the VPC
+1. Client sends request to 35.175.101.240 (or 3.230.81.125)
+2. NLB listener on port 80 receives the request on the Elastic IP
+3. NLB forwards to a healthy target in sorterra-api-nlb-tg (API container IP on port 8080)
+4. Traffic crosses from public subnet (NLB) to private subnet (API) within the VPC
 6. API container processes the request
-7. If the request needs data, the API connects to mysql.sorterra.local:3306
-8. Cloud Map resolves mysql.sorterra.local to the MySQL container's private IP
-9. MySQL reads/writes data on the EFS volume mounted at /var/lib/mysql
-10. Response flows back: MySQL → API → ALB → Client
+6. If the request needs data, the API connects to mysql.sorterra.local:3306
+7. Cloud Map resolves mysql.sorterra.local to the MySQL container's private IP
+8. MySQL reads/writes data on the EFS volume mounted at /var/lib/mysql
+9. Response flows back: MySQL → API → NLB → Client
 ```
 
 ## Cost Estimate
@@ -379,7 +386,8 @@ Approximate monthly cost running 24/7 in us-east-1:
 |----------|------|-----------------|
 | Fargate — API | 0.25 vCPU, 512 MB | ~$9 |
 | Fargate — MySQL | 0.5 vCPU, 1 GB | ~$18 |
-| ALB | Base + LCU | ~$16 + traffic |
+| NLB | Base + LCU | ~$16 + traffic |
+| Elastic IPs (×2) | Attached to NLB | ~$0 (free when attached) |
 | NAT Gateway | Base + data | ~$32 + $0.045/GB |
 | EFS | Storage + I/O | ~$1–3 |
 | CloudWatch Logs | Ingestion + storage | ~$1–2 |
@@ -388,8 +396,8 @@ Approximate monthly cost running 24/7 in us-east-1:
 To reduce cost when not in use, scale services to 0:
 
 ```bash
-aws ecs update-service --cluster sorterra --service sorterra-api --desired-count 0 --region us-east-1
+aws ecs update-service --cluster sorterra --service sorterra-api-v2 --desired-count 0 --region us-east-1
 aws ecs update-service --cluster sorterra --service sorterra-mysql --desired-count 0 --region us-east-1
 ```
 
-The NAT gateway and ALB still incur charges even with services scaled down. To fully stop costs, delete these resources and recreate them when needed (see [cleanup in the deployment guide](aws-ecs-fargate-deployment.md#cleanup)).
+The NAT gateway and NLB still incur charges even with services scaled down. To fully stop costs, delete these resources and recreate them when needed (see [cleanup in the deployment guide](aws-ecs-fargate-deployment.md#cleanup)).
