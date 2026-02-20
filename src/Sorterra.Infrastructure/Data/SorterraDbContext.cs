@@ -84,7 +84,7 @@ public class SorterraDbContext : DbContext
             entity.Property(e => e.TenantId).HasColumnName("tenant_id").HasMaxLength(255);
             entity.Property(e => e.ClientId).HasColumnName("client_id").HasMaxLength(255);
             entity.Property(e => e.Thumbprint).HasColumnName("thumbprint").HasMaxLength(255);
-            entity.Property(e => e.PrivateKeyPath).HasColumnName("private_key_path").HasMaxLength(512);
+            entity.Property(e => e.PrivateKeyPath).HasColumnName("private_key_path").HasColumnType("text");
             entity.Property(e => e.DriveId).HasColumnName("drive_id").HasMaxLength(255);
             entity.Property(e => e.SourceFolder).HasColumnName("source_folder").HasMaxLength(1024);
             entity.Property(e => e.ConnectionStatus).HasColumnName("connection_status").HasMaxLength(50);

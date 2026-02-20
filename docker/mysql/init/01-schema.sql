@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS sharepoint_connections (
     tenant_id VARCHAR(255),
     client_id VARCHAR(255),
     thumbprint VARCHAR(255),
-    private_key_path VARCHAR(512),
+    private_key_path TEXT,
     drive_id VARCHAR(255),
     source_folder VARCHAR(1024),
     connection_status VARCHAR(50) DEFAULT 'pending',
