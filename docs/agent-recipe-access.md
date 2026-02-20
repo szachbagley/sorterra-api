@@ -6,6 +6,8 @@ How the AI file-sorting agent retrieves sorting recipes from the Sorterra API.
 
 When a file is uploaded or modified in a connected SharePoint site, the agent receives a webhook event containing the `connectionId` of the SharePoint connection. The agent uses this ID to fetch the active sorting recipes for that connection's organization, then evaluates each recipe against the file to determine how it should be classified and moved.
 
+Each SharePoint connection stores the authentication credentials needed to access the site (certificate-based auth via `clientId`, `thumbprint`, and `privateKeyPath`) along with a `sourceFolder` that specifies the folder to monitor for files to sort (e.g., `/Unsorted`).
+
 ## Endpoint
 
 ```
@@ -57,14 +59,15 @@ Returns all **active** sorting recipes for the organization that owns the given 
 
 ```
 1. Receive webhook event with connectionId
-2. GET /api/sortingrecipes/by-connection/{connectionId}
-3. Iterate recipes in order (already sorted by priority)
-4. For each recipe:
+2. GET /api/sharepointconnections/{connectionId} to retrieve auth credentials and sourceFolder
+3. GET /api/sortingrecipes/by-connection/{connectionId}
+4. Iterate recipes in order (already sorted by priority)
+5. For each recipe:
    a. Match fileTypePattern against the file's AI classification
    b. Evaluate rules JSON conditions against file metadata
    c. If match: apply destinationPathTemplate to generate the target path
    d. Stop at first match
-5. If no recipe matches, mark the file as unmatched
+6. If no recipe matches, mark the file as unmatched
 ```
 
 ## Recipe Fields Reference

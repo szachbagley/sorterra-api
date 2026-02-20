@@ -132,7 +132,7 @@ The database supports multi-tenant file management with the following tables:
 ### SharePoint Integration
 | Table | Description |
 |-------|-------------|
-| `sharepoint_connections` | Connected SharePoint sites per organization |
+| `sharepoint_connections` | Connected SharePoint sites per organization (stores certificate auth credentials and source folder) |
 | `oauth_tokens` | Encrypted OAuth tokens for SharePoint access |
 
 ### File Processing

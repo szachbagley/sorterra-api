@@ -223,7 +223,11 @@ Returns all connections.
     "organizationId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     "siteUrl": "https://acmecorp.sharepoint.com/sites/Finance",
     "tenantId": "acme-tenant-001",
+    "clientId": "app-client-id-001",
+    "thumbprint": "ABC123DEF456...",
+    "privateKeyPath": "/certs/sharepoint-app.pem",
     "driveId": "drive-finance-001",
+    "sourceFolder": "/Unsorted",
     "connectionStatus": "active",
     "lastSyncAt": null,
     "webhookSubscriptionId": null,
@@ -249,7 +253,11 @@ Create a connection.
 | organizationId | uuid | yes |
 | siteUrl | string | yes |
 | tenantId | string | no |
+| clientId | string | no |
+| thumbprint | string | no |
+| privateKeyPath | string | no |
 | driveId | string | no |
+| sourceFolder | string | no |
 | connectionStatus | string | no (defaults to `pending`) |
 | createdBy | uuid | no |
 
@@ -261,7 +269,11 @@ Update a connection. All fields optional.
 |-------|------|
 | siteUrl | string |
 | tenantId | string |
+| clientId | string |
+| thumbprint | string |
+| privateKeyPath | string |
 | driveId | string |
+| sourceFolder | string |
 | connectionStatus | string |
 | lastSyncAt | datetime |
 | webhookSubscriptionId | string |
