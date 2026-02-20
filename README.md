@@ -93,6 +93,7 @@ sorterra-api/
 │   ├── api-reference.md                   # Full API reference documentation
 │   ├── aws-ec2-deployment.md              # ECR + EC2 deployment guide (legacy)
 │   ├── aws-ecs-fargate-deployment.md      # ECR + ECS Fargate deployment guide (current)
+│   ├── aws-ecs-update-redeployment.md     # How to redeploy after code/schema changes
 │   └── aws-infrastructure.md              # AWS infrastructure diagram and reference
 │
 ├── tests/                                 # (placeholder for test projects)
