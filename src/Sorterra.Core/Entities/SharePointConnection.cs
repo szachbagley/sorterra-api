@@ -1,6 +1,6 @@
 namespace Sorterra.Core.Entities;
 
-public class HSharePointConnection
+public class SharePointConnection
 {
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
