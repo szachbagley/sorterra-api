@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sorterra.Core.DTOs;
@@ -6,6 +7,7 @@ using Sorterra.Infrastructure.Data;
 
 namespace Sorterra.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class SharePointConnectionsController : ControllerBase
