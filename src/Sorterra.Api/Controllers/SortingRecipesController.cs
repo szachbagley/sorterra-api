@@ -9,7 +9,7 @@ namespace Sorterra.Api.Controllers;
 
 [Authorize]
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class SortingRecipesController : ControllerBase
 {
     private readonly SorterraDbContext _dbContext;

@@ -103,6 +103,9 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// ALB forwards /api/* without rewriting — tell ASP.NET the app lives under /api
+app.UsePathBase("/api");
+
 // Configure the HTTP request pipeline
 
 if (app.Environment.IsDevelopment())
@@ -123,8 +126,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-// Map health check endpoints
-app.MapHealthChecks("/health");
 
 app.Run();
