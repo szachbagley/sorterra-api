@@ -49,6 +49,11 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 // Controllers
 builder.Services.AddControllers();
 
+// Bedrock AgentCore client for invoking the Sorterra agent
+builder.Services.AddSingleton<Amazon.BedrockAgentCore.IAmazonBedrockAgentCore>(
+    _ => new Amazon.BedrockAgentCore.AmazonBedrockAgentCoreClient(
+        Amazon.RegionEndpoint.USEast1));
+
 // Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
