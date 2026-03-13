@@ -27,6 +27,9 @@ public class AgentResponse
 
     [JsonPropertyName("results")]
     public List<AgentFileResult> Results { get; set; } = new();
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
 }
 
 /// <summary>
@@ -45,6 +48,9 @@ public class AgentFileResult
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
 }
 
 /// <summary>

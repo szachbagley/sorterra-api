@@ -46,6 +46,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
+// Consent state service for Azure AD admin consent flow
+builder.Services.AddSingleton<Sorterra.Api.Services.ConsentStateService>();
+
 // Controllers
 builder.Services.AddControllers();
 

@@ -76,6 +76,7 @@ public class SortController : ControllerBase
         {
             id = connection.OrganizationId.ToString(),
             tenant_id = connection.TenantId,
+            site_url = connection.SiteUrl,
             path = request.FolderPath,
             recipe = new
             {
@@ -90,7 +91,7 @@ public class SortController : ControllerBase
             request.ConnectionId, request.RecipeId, request.FolderPath);
 
         AgentResponse agentResponse;
-        var sessionId = $"session-{connection.OrganizationId}";
+        var sessionId = $"session-{Guid.NewGuid()}";
 
         try
         {
@@ -112,7 +113,25 @@ public class SortController : ControllerBase
             return StatusCode(502, new { error = "Failed to invoke the sorting agent", detail = ex.Message });
         }
 
-        // --- 6. Record results in the database ---
+        // --- 6. Check for agent-level error ---
+        if (agentResponse.Status == "error")
+        {
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = connection.OrganizationId,
+                ActivityType = "sort_failed",
+                EntityType = "SortingRecipe",
+                EntityId = recipe.Id,
+                Description = agentResponse.Message ?? "Agent returned an error",
+                CreatedAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync();
+
+            return StatusCode(502, new { error = agentResponse.Message ?? "Sorting agent failed" });
+        }
+
+        // --- 7. Record results in the database ---
         var fileResults = new List<SortFileResultDto>();
 
         if (agentResponse.Results != null)

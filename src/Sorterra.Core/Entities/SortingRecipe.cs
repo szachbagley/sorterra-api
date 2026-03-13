@@ -13,7 +13,7 @@ public class SortingRecipe
     public Guid? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
-    public string Rules { get; set; } = "{}";
+    public string Rules { get; set; } = "[]";
     public int FilesProcessedCount { get; set; }
 
     // Navigation properties
