@@ -22,6 +22,11 @@ public record UpdateSortingRecipeDto(
     string? Rules
 );
 
+/// <summary>
+/// DTO for bulk updating recipe priorities (e.g. after drag-and-drop reorder).
+/// </summary>
+public record UpdateRecipePriorityDto(Guid Id, int Priority);
+
 public record SortingRecipeResponseDto(
     Guid Id,
     Guid OrganizationId,

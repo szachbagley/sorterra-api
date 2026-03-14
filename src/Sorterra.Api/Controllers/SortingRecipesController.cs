@@ -123,6 +123,43 @@ public class SortingRecipesController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Bulk update recipe priorities (e.g. after drag-and-drop reorder). Auto-save on drop.
+    /// </summary>
+    [HttpPatch("priorities")]
+    public async Task<IActionResult> UpdatePriorities([FromBody] List<UpdateRecipePriorityDto> updates)
+    {
+        if (updates == null || updates.Count == 0)
+            return BadRequest(new { error = "At least one recipe priority is required." });
+
+        using var transaction = await _dbContext.Database.BeginTransactionAsync();
+        try
+        {
+            var ids = updates.Select(u => u.Id).ToList();
+            var entities = await _dbContext.SortingRecipes.Where(r => ids.Contains(r.Id)).ToListAsync();
+
+            foreach (var dto in updates)
+            {
+                var entity = entities.FirstOrDefault(e => e.Id == dto.Id);
+                if (entity != null)
+                {
+                    entity.Priority = dto.Priority;
+                    entity.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to update recipe priorities");
+            throw;
+        }
+    }
+
     private static SortingRecipeResponseDto MapToResponse(SortingRecipe entity) => new(
         entity.Id,
         entity.OrganizationId,

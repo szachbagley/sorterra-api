@@ -4,10 +4,10 @@ namespace Sorterra.Core.DTOs;
 
 /// <summary>
 /// Request body sent by the frontend to trigger a sort job.
+/// All active recipes for the connection's organization are merged and sent to the agent.
 /// </summary>
 public record TriggerSortRequest(
     Guid ConnectionId,
-    Guid RecipeId,
     string FolderPath
 );
 
@@ -62,7 +62,6 @@ public record SortResponseDto(
     int FilesFound,
     int FilesSorted,
     Guid ConnectionId,
-    Guid RecipeId,
     List<SortFileResultDto> Results
 );
 
