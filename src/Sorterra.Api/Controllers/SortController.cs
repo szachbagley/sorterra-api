@@ -46,32 +46,44 @@ public class SortController : ControllerBase
         if (string.IsNullOrEmpty(connection.TenantId))
             return BadRequest(new { error = "Connection is missing a TenantId" });
 
-        // --- 2. Look up the recipe ---
-        var recipe = await _dbContext.SortingRecipes
+        // --- 2. Load all active recipes for this connection's organization (merged into one sort) ---
+        var activeRecipes = await _dbContext.SortingRecipes
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == request.RecipeId && r.IsActive);
+            .Where(r => r.OrganizationId == connection.OrganizationId && r.IsActive)
+            .OrderBy(r => r.Priority)
+            .ToListAsync();
 
-        if (recipe == null)
-            return NotFound(new { error = "Recipe not found or inactive" });
+        if (activeRecipes.Count == 0)
+            return BadRequest(new { error = "No active recipes found for this connection. Add and enable at least one recipe." });
 
-        // --- 3. Deserialize recipe rules ---
-        string[] rules;
-        try
+        // --- 3. Merge rules from all active recipes (one name + one list for the agent) ---
+        var mergedRules = new List<string>();
+        foreach (var recipe in activeRecipes)
         {
-            rules = JsonSerializer.Deserialize<string[]>(recipe.Rules) ?? [];
-        }
-        catch (JsonException)
-        {
-            _logger.LogWarning("Recipe {RecipeId} has invalid rules JSON, sending as single rule", recipe.Id);
-            rules = string.IsNullOrWhiteSpace(recipe.Rules) || recipe.Rules == "{}"
-                ? []
-                : [recipe.Rules];
+            string[] recipeRules;
+            try
+            {
+                recipeRules = JsonSerializer.Deserialize<string[]>(recipe.Rules) ?? [];
+            }
+            catch (JsonException)
+            {
+                if (!string.IsNullOrWhiteSpace(recipe.Rules) && recipe.Rules != "{}")
+                    recipeRules = [recipe.Rules];
+                else
+                    recipeRules = [];
+            }
+
+            if (recipeRules.Length > 0)
+            {
+                mergedRules.Add($"[Recipe: {recipe.Name}]");
+                mergedRules.AddRange(recipeRules);
+            }
         }
 
-        if (rules.Length == 0)
-            return BadRequest(new { error = "Recipe has no rules defined" });
+        if (mergedRules.Count == 0)
+            return BadRequest(new { error = "Active recipes have no rules defined. Add instructions to at least one recipe." });
 
-        // --- 4. Build the agent payload ---
+        // --- 4. Build the agent payload (single name + merged rules) ---
         var agentPayload = new
         {
             id = connection.OrganizationId.ToString(),
@@ -80,15 +92,15 @@ public class SortController : ControllerBase
             path = request.FolderPath,
             recipe = new
             {
-                name = recipe.Name,
-                rules
+                name = "Sorterra",
+                rules = mergedRules
             }
         };
 
         // --- 5. Invoke the agent via Bedrock AgentCore SDK ---
         _logger.LogInformation(
-            "Triggering sort: Connection={ConnectionId}, Recipe={RecipeId}, Path={FolderPath}",
-            request.ConnectionId, request.RecipeId, request.FolderPath);
+            "Triggering sort: Connection={ConnectionId}, Path={FolderPath}, ActiveRecipes={Count}",
+            request.ConnectionId, request.FolderPath, activeRecipes.Count);
 
         AgentResponse agentResponse;
         var sessionId = $"session-{Guid.NewGuid()}";
@@ -122,7 +134,7 @@ public class SortController : ControllerBase
                 OrganizationId = connection.OrganizationId,
                 ActivityType = "sort_failed",
                 EntityType = "SortingRecipe",
-                EntityId = recipe.Id,
+                EntityId = Guid.Empty,
                 Description = agentResponse.Message ?? "Agent returned an error",
                 CreatedAt = DateTime.UtcNow
             });
@@ -131,7 +143,7 @@ public class SortController : ControllerBase
             return StatusCode(502, new { error = agentResponse.Message ?? "Sorting agent failed" });
         }
 
-        // --- 7. Record results in the database ---
+        // --- 7. Record results in the database (combined sort: no single AppliedRecipeId) ---
         var fileResults = new List<SortFileResultDto>();
 
         if (agentResponse.Results != null)
@@ -144,12 +156,12 @@ public class SortController : ControllerBase
                     Id = Guid.NewGuid(),
                     OrganizationId = connection.OrganizationId,
                     ConnectionId = connection.Id,
-                    SharePointItemId = r.File,  // server-relative URL as identifier
+                    SharePointItemId = r.File,
                     OriginalName = originalName,
                     OriginalPath = r.File,
                     NewPath = r.Status == "success" ? r.Result : null,
                     FileExtension = Path.GetExtension(originalName),
-                    AppliedRecipeId = recipe.Id,
+                    AppliedRecipeId = null, // combined sort uses all active recipes
                     Status = r.Status,
                     ProcessedAt = DateTime.UtcNow,
                     ErrorMessage = r.Message,
@@ -174,25 +186,28 @@ public class SortController : ControllerBase
             OrganizationId = connection.OrganizationId,
             ActivityType = "sort_completed",
             EntityType = "SortingRecipe",
-            EntityId = recipe.Id,
+            EntityId = Guid.Empty,
             Description = $"Sorted {agentResponse.FilesSorted}/{agentResponse.FilesFound} files in {request.FolderPath}",
             Metadata = JsonSerializer.Serialize(new
             {
                 connectionId = connection.Id,
-                recipeId = recipe.Id,
                 folderPath = request.FolderPath,
                 filesFound = agentResponse.FilesFound,
-                filesSorted = agentResponse.FilesSorted
+                filesSorted = agentResponse.FilesSorted,
+                recipeCount = activeRecipes.Count
             }),
             CreatedAt = DateTime.UtcNow
         });
 
-        // Increment the recipe's processed file count
-        var trackedRecipe = await _dbContext.SortingRecipes.FindAsync(recipe.Id);
-        if (trackedRecipe != null)
+        // Increment processed file count for all active recipes that participated
+        foreach (var recipe in activeRecipes)
         {
-            trackedRecipe.FilesProcessedCount += agentResponse.FilesSorted;
-            trackedRecipe.UpdatedAt = DateTime.UtcNow;
+            var tracked = await _dbContext.SortingRecipes.FindAsync(recipe.Id);
+            if (tracked != null)
+            {
+                tracked.FilesProcessedCount += agentResponse.FilesSorted;
+                tracked.UpdatedAt = DateTime.UtcNow;
+            }
         }
 
         await _dbContext.SaveChangesAsync();
@@ -201,13 +216,12 @@ public class SortController : ControllerBase
             "Sort complete: {FilesSorted}/{FilesFound} files sorted for connection {ConnectionId}",
             agentResponse.FilesSorted, agentResponse.FilesFound, request.ConnectionId);
 
-        // --- 7. Return result to frontend ---
+        // --- 8. Return result to frontend ---
         return Ok(new SortResponseDto(
             agentResponse.Status,
             agentResponse.FilesFound,
             agentResponse.FilesSorted,
             request.ConnectionId,
-            request.RecipeId,
             fileResults
         ));
     }
