@@ -39,10 +39,13 @@ public class SharePointConnectionsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateSharePointConnectionDto dto)
     {
+        if (dto.OrganizationId is null || dto.OrganizationId == Guid.Empty)
+            return BadRequest(new { error = "Organization ID is required." });
+
         var entity = new SharePointConnection
         {
             Id = Guid.NewGuid(),
-            OrganizationId = dto.OrganizationId,
+            OrganizationId = dto.OrganizationId.Value,
             SiteUrl = dto.SiteUrl,
             TenantId = dto.TenantId,
             ClientId = dto.ClientId,

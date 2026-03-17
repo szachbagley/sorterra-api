@@ -1,7 +1,7 @@
 namespace Sorterra.Core.DTOs;
 
 public record CreateSharePointConnectionDto(
-    Guid OrganizationId,
+    Guid? OrganizationId,
     string SiteUrl,
     string? TenantId,
     string? ClientId,

@@ -39,19 +39,54 @@ public class UsersController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(CreateUserDto dto)
     {
-        var entity = new User
+        using var transaction = await _dbContext.Database.BeginTransactionAsync();
+        try
         {
-            Id = Guid.NewGuid(),
-            CognitoSub = dto.CognitoSub,
-            Email = dto.Email,
-            DisplayName = dto.DisplayName,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var entity = new User
+            {
+                Id = Guid.NewGuid(),
+                CognitoSub = dto.CognitoSub,
+                Email = dto.Email,
+                DisplayName = dto.DisplayName,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _dbContext.Users.Add(entity);
 
-        _dbContext.Users.Add(entity);
-        await _dbContext.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, MapToResponse(entity));
+            // Auto-provision personal organization
+            var orgName = !string.IsNullOrWhiteSpace(dto.DisplayName)
+                ? $"{dto.DisplayName}'s Organization"
+                : $"{dto.Email.Split('@')[0]}'s Organization";
+
+            var organization = new Organization
+            {
+                Id = Guid.NewGuid(),
+                Name = orgName,
+                Settings = "{}",
+                CreatedAt = DateTime.UtcNow
+            };
+            _dbContext.Organizations.Add(organization);
+
+            var membership = new UserOrganization
+            {
+                UserId = entity.Id,
+                OrganizationId = organization.Id,
+                Role = "owner",
+                JoinedAt = DateTime.UtcNow
+            };
+            _dbContext.UserOrganizations.Add(membership);
+
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return CreatedAtAction(nameof(GetById), new { id = entity.Id }, MapToResponse(entity));
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to create user and organization for {Email}", dto.Email);
+            throw;
+        }
     }
 
     [HttpPut("{id}")]
