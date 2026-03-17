@@ -35,55 +35,49 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 - [x] CloudWatch logging for ECS containers
 - [x] IAM execution and task roles for ECS
 
+- [x] Amazon Cognito JWT validation middleware (JWT Bearer auth in `Program.cs`)
+- [x] `[Authorize]` attribute on all protected controllers
+- [x] `CurrentUserService` to access authenticated user info
+- [x] Sort endpoint (`POST /api/sort`) with Bedrock AgentCore agent integration
+- [x] `SortController` with connection lookup, recipe merging, agent invocation, result recording
+- [x] `SortDtos` (request, agent response, frontend response models)
+- [x] Azure AD admin consent flow (`SharePointAuthController` + `ConsentStateService`)
+- [x] Frontend admin consent integration (ConnectionModal, Settings callback handling)
+
 ### In Progress
-- [ ] Authentication & SharePoint integration (see Sprint 1 below)
+- [ ] Azure AD app registration prerequisites (see `docs/integration-plan.md`)
 
 ---
 
 ## Sprint 1: Connectivity & Foundation
 
-### Authentication (High Priority)
-- [ ] **BACKEND-002**: Configure Amazon Cognito User Pool
-  - Create user pool in AWS Console
-  - Configure app client with proper OAuth settings
-  - Set up hosted UI for login flow
-  - Document client IDs and endpoints in team wiki
+### Authentication (High Priority) ✅
+- [x] **BACKEND-002**: Configure Amazon Cognito User Pool
+  - User pool created: `us-east-1_d63e7X9x7`
+  - App client configured: `1ccr4hrojdp2kt96qohc2a05s5`
+  - See `docs/aws-cognito-setup.md`
 
-- [ ] **BACKEND-003**: Implement Cognito JWT validation middleware
-  - Add JWT Bearer authentication in `Program.cs`
-  - Create `JwtValidationMiddleware.cs` to validate Cognito tokens
-  - Extract user claims (sub, email, groups)
-  - Implement `[Authorize]` attribute on protected endpoints
-  - Create `CurrentUserService` to access authenticated user info
+- [x] **BACKEND-003**: Implement Cognito JWT validation middleware
+  - JWT Bearer authentication configured in `Program.cs`
+  - `[Authorize]` attribute on all protected controllers
+  - `CurrentUserService` extracts authenticated user claims
 
-### SharePoint Integration (High Priority)
-- [ ] **BACKEND-005**: Research Microsoft Graph API authentication
-  - Register Azure AD application
-  - Document required permissions (Files.ReadWrite.All, Sites.ReadWrite.All)
-  - Understand OAuth 2.0 authorization code flow
-  - Prototype token acquisition in a test project
+### SharePoint Integration (High Priority) — Partially Done
+- [x] **BACKEND-005**: Azure AD admin consent flow
+  - App registration client ID: `120d6fc7-f18a-4507-ad34-6ae1d41bd0db`
+  - Multi-tenant admin consent via `login.microsoftonline.com/common/adminconsent`
+  - The agent authenticates to SharePoint via certificate-based MSAL (not Graph API directly from the API)
+  - See `docs/integration-plan.md`
 
-- [ ] **BACKEND-006**: Create SharePoint connection endpoints
-  ```
-  POST   /api/connections           - Initiate OAuth flow
-  GET    /api/connections/callback  - Handle OAuth redirect
-  GET    /api/connections           - List connections for org
-  DELETE /api/connections/{id}      - Disconnect SharePoint site
-  ```
-  - Implement `ConnectionsController.cs`
-  - Create `TokenEncryptionService.cs` for secure token storage
-  - Store encrypted tokens in `oauth_tokens` table
+- [x] **BACKEND-006**: SharePoint auth endpoints
+  - `GET /api/auth/sharepoint/consent` — Returns consent URL for pending connections
+  - `GET /api/auth/sharepoint/callback` — Handles Microsoft redirect, captures tenant ID
+  - `SharePointAuthController.cs` + `ConsentStateService.cs`
+  - SharePoint connection CRUD already in `SharePointConnectionsController.cs`
 
-- [ ] **BACKEND-007**: Implement Graph API service wrapper
-  - Create `GraphApiService.cs` with typed HttpClient
-  - Implement automatic token refresh logic
-  - Add retry policies with Polly for transient failures
-  - Methods needed:
-    - `GetDriveAsync()` - Get SharePoint drive info
-    - `ListFilesAsync()` - List files in a folder
-    - `GetFileContentAsync()` - Download file content
-    - `MoveFileAsync()` - Move file to new location
-    - `RenameFileAsync()` - Rename a file
+- [ ] **BACKEND-007**: Graph API service wrapper (deprioritized)
+  - File operations are handled by the agent (Python) via SharePoint REST API, not the C# API
+  - May revisit if direct API-to-SharePoint operations are needed in the future
 
 ---
 
@@ -159,6 +153,7 @@ This document tracks the remaining work for the Sorterra backend API, organized 
 
 ### Security
 - [ ] **BACKEND-016**: Security audit and hardening
+  - Move `Encryption:TokenEncryptionKey` from `appsettings.json` to AWS Secrets Manager or ECS task definition environment variables before production deployment (coordinate with McKay)
   - Review all endpoints for proper authorization
   - Ensure organization-level data isolation
   - Implement rate limiting (consider AspNetCoreRateLimit)
@@ -279,6 +274,19 @@ Each resource has GET (list), GET `{id}`, POST, PUT `{id}`, DELETE `{id}`.
 | Webhook Events | `/api/webhookevents` | Done |
 | Search Queries | `/api/searchqueries` | Done |
 
+### Sort Endpoint
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| POST | `/api/sort` | Done |
+
+### SharePoint Auth (Admin Consent)
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | `/api/auth/sharepoint/consent` | Done |
+| GET | `/api/auth/sharepoint/callback` | Done |
+
 ### Agent Endpoints
 
 | Method | Endpoint | Status |
@@ -289,9 +297,6 @@ Each resource has GET (list), GET `{id}`, POST, PUT `{id}`, DELETE `{id}`.
 
 | Method | Endpoint | Status |
 |--------|----------|--------|
-| POST | `/api/auth/login` | Planned |
-| POST | `/api/connections` | Planned (OAuth flow) |
-| GET | `/api/connections/callback` | Planned (OAuth callback) |
 | POST | `/api/search` | Planned (semantic search) |
 | POST | `/api/webhooks/sharepoint` | Planned (Graph API webhook receiver) |
 

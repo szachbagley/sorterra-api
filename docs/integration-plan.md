@@ -1,6 +1,6 @@
 # Sorterra Integration Plan
 
-Consolidated plan covering admin consent onboarding (from `app.py` prototype) and all agent ↔ API discrepancy fixes. Created 2026-03-09.
+Consolidated plan covering admin consent onboarding (from `app.py` prototype) and all agent ↔ API discrepancy fixes. Created 2026-03-09. Updated 2026-03-17 with implementation status.
 
 ---
 
@@ -31,39 +31,41 @@ The goal of this plan is to:
 
 ## Prerequisites
 
-Before starting, confirm with Nathan:
+Confirm with Nathan:
 
 - [ ] The Sorterra Azure AD app registration is configured as **multi-tenant** (supported account types: "Accounts in any organizational directory")
 - [ ] The app has **SharePoint** application permissions: `Sites.FullControl.All`
 - [ ] The app's certificate (thumbprint + private key) is stored in the global Secrets Manager secret and will work for any consented tenant
-- [ ] The `REDIRECT_URI` for the deployed app (e.g., `https://sorterra.app/auth/sharepoint/callback`) is registered in the Azure AD app's redirect URIs
+- [ ] The redirect URI `https://sorterra.app/api/auth/sharepoint/callback` is registered in the Azure AD app's redirect URIs
+- [x] Client ID obtained: `120d6fc7-f18a-4507-ad34-6ae1d41bd0db`
 
 If the app registration is currently single-tenant, Nathan will need to change it to multi-tenant in Azure AD before the consent flow will work for external tenants.
 
 ---
 
-## Phase 1 — Admin Consent Flow (API + Frontend)
+## Phase 1 — Admin Consent Flow (API + Frontend) ✅ IMPLEMENTED
 
-Integrate the `app.py` prototype into the C# API and React frontend so users can onboard their SharePoint tenant through the browser.
+Integrated the `app.py` prototype into the C# API and React frontend so users can onboard their SharePoint tenant through the browser. Implemented 2026-03-17.
 
-### 1.1 API: Add global app configuration
+### 1.1 API: Add global app configuration ✅
 
-Add to `appsettings.json` (or environment variables):
+Added to `appsettings.json`:
 
 ```json
 {
   "AzureAd": {
-    "ClientId": "<Sorterra app registration client ID>",
-    "ConsentRedirectUri": "https://sorterra.app/auth/sharepoint/callback"
-  }
+    "ClientId": "120d6fc7-f18a-4507-ad34-6ae1d41bd0db",
+    "ConsentRedirectUri": "https://sorterra.app/api/auth/sharepoint/callback"
+  },
+  "FrontendBaseUrl": "http://localhost:3000"
 }
 ```
 
-These are the **global** app registration values — shared across all tenants. Not per-connection.
+Note: The redirect URI includes `/api` due to `app.UsePathBase("/api")`.
 
-### 1.2 API: Create consent endpoints
+### 1.2 API: Create consent endpoints ✅
 
-Create a new controller (e.g., `AuthController` or `SharePointAuthController`) with two endpoints:
+Created `SharePointAuthController` with two endpoints:
 
 **`GET /api/auth/sharepoint/consent`** — Initiates the admin consent flow.
 - Generates a `state` nonce (UUID), stores it server-side (cache or short-lived DB row) associated with the authenticated user's org
@@ -82,14 +84,11 @@ Create a new controller (e.g., `AuthController` or `SharePointAuthController`) w
 - On success: creates a new `SharePointConnection` with `TenantId` set and `ConnectionStatus = "consented"`, or updates an existing pending connection
 - Redirects the browser back to `https://sorterra.app/settings?consent=success` (or `?consent=error&message=...`)
 
-**State storage options** (pick one):
-- Encode `state` as a signed JWT containing `{ nonce, orgId, exp }` — stateless, no DB needed
-- Store in an in-memory cache with 10-minute TTL
-- Store in a `ConsentState` DB table with expiration cleanup
+**State storage:** Implemented as a signed JWT (`ConsentStateService.cs`) containing `{ connectionId, nonce, exp }`, signed with HMAC-SHA256 using `Encryption:TokenEncryptionKey`. Stateless — no DB or cache needed. 10-minute expiry.
 
-### 1.3 Frontend: Replace manual Tenant ID input with consent button
+### 1.3 Frontend: Replace manual Tenant ID input with consent button ✅
 
-Rework `ConnectionModal.jsx`:
+Reworked `ConnectionModal.jsx`:
 
 1. Remove the `tenantId` text input field
 2. Add a **"Connect with Microsoft"** button that:
@@ -103,17 +102,13 @@ Rework `ConnectionModal.jsx`:
 2. Modal shows "Authorize with Microsoft" button, user clicks it
 3. After consent callback, connection is created with `tenantId` auto-populated
 
-### 1.4 Frontend: Add callback route
+### 1.4 Frontend: Handle callback query params ✅
 
-Add a route at `/auth/sharepoint/callback` that:
-- The API's callback endpoint redirects here after processing Microsoft's response
-- Reads `consent=success` or `consent=error` from query params
-- Shows a brief success/error message
-- Navigates to `/settings` after a short delay (or immediately with a toast)
+Instead of a separate callback route, `Settings.jsx` reads `consent=success` or `consent=error` from query params on mount (the API callback redirects to `/settings?consent=...`). Shows a toast and cleans up the URL params.
 
-### 1.5 Connection status lifecycle
+### 1.5 Connection status lifecycle ✅
 
-Formalize the connection status values:
+Formalized connection status values (implemented in frontend `STATUS_CONFIG` and backend):
 
 | Status | Meaning |
 |--------|---------|
@@ -122,15 +117,15 @@ Formalize the connection status values:
 | `active` | Fully operational — agent can sort files for this connection |
 | `error` | Something is wrong (see `ErrorMessage` field) |
 
-The `Sort Now` button should only be enabled for `active` connections.
+The `Sort Now` button is disabled for `pending` and `error` connections.
 
 ---
 
-## Phase 2 — Agent Payload & Multi-Tenant Fixes
+## Phase 2 — Agent Payload & Multi-Tenant Fixes (API-side done, agent-side pending)
 
-Fix the critical and high-severity discrepancies between the API and agent.
+Fix the critical and high-severity discrepancies between the API and agent. API-side changes implemented 2026-03-17. Agent-side changes require coordination with Nathan (we cannot modify sorterra-agent).
 
-### 2.1 Send `site_url` in the agent payload
+### 2.1 Send `site_url` in the agent payload — API ✅ / Agent pending
 
 **Files:** `SortController.cs:75–85`, `agent.py:124–135`, `agent_tools.py:21–54`
 
@@ -184,11 +179,11 @@ ErrorMessage = r.Description ?? r.Message,                // LLM summary or erro
 public string? Description { get; set; }
 ```
 
-### 2.3 Handle agent error status in the API
+### 2.3 Handle agent error status in the API ✅
 
-**File:** `SortController.cs:118–193`
+**File:** `SortController.cs:117–132`
 
-After deserializing the agent response, check the status before recording results:
+After deserializing the agent response, the status is checked before recording results:
 
 ```csharp
 if (agentResponse.Status == "error")
@@ -209,9 +204,9 @@ if (agentResponse.Status == "error")
 }
 ```
 
-### 2.4 Add `message` to `AgentResponse` DTO
+### 2.4 Add `message` to `AgentResponse` DTO ✅
 
-**File:** `SortDtos.cs:17–30`
+**File:** `SortDtos.cs:31–32`
 
 ```csharp
 [JsonPropertyName("message")]
@@ -224,16 +219,11 @@ The agent returns `message` on error responses and empty-folder responses. Witho
 
 ## Phase 3 — Smaller Fixes
 
-### 3.1 Use unique session IDs per sort request
+### 3.1 Use unique session IDs per sort request ✅
 
-**File:** `SortController.cs:93`
+**File:** `SortController.cs:106`
 
-Change from deterministic to unique:
-```csharp
-var sessionId = $"session-{Guid.NewGuid()}";
-```
-
-Prevents state contamination between concurrent sorts from the same org.
+Changed to `$"session-{Guid.NewGuid()}"`. Prevents state contamination between concurrent sorts.
 
 ### 3.2 Clarify `id` field semantics
 
@@ -295,14 +285,11 @@ results.append({
 })
 ```
 
-### 3.5 Fix `SortingRecipe.Rules` default
+### 3.5 Fix `SortingRecipe.Rules` default ✅
 
 **File:** `SortingRecipe.cs:16`
 
-Change from `"{}"` to `"[]"` so the default matches the expected string-array format:
-```csharp
-public string Rules { get; set; } = "[]";
-```
+Changed to `"[]"` to match the expected string-array format.
 
 ---
 
@@ -339,11 +326,11 @@ After the consent flow is properly integrated into the C# API (Phase 1), the Fla
 
 ## Summary
 
-| Phase | Scope | Changes |
-|-------|-------|---------|
-| **1** | Admin Consent Onboarding | API consent endpoints, frontend consent flow, connection status lifecycle |
-| **2** | Agent ↔ API Critical Fixes | Send `site_url` in payload, structured `destination_path`, error status handling, `message` DTO field |
-| **3** | Smaller Fixes | Unique session IDs, `id` rename, true `files_found`, consistent result fields, `Rules` default |
-| **4** | Cleanup | Remove unused entity fields, evaluate `OAuthToken`, delete `app.py` prototype |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **1** | Admin Consent Onboarding | ✅ Done — API consent endpoints, frontend consent flow, connection status lifecycle |
+| **2** | Agent ↔ API Critical Fixes | Partial — API-side done (site_url, error handling, message DTO). Agent-side pending (structured destination_path). |
+| **3** | Smaller Fixes | Partial — Done: unique session IDs, Rules default. Pending: `id` rename, true `files_found`, consistent result fields (all require agent changes). |
+| **4** | Cleanup | Not started — remove unused entity fields, evaluate OAuthToken, delete `app.py` prototype |
 
-Phases 1 and 2 can be worked in parallel — Phase 1 is API+frontend work, Phase 2 involves coordinating with Nathan on agent changes.
+Phase 2 and 3 remaining items require coordinating with Nathan on agent changes (we cannot modify sorterra-agent).

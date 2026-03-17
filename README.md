@@ -18,7 +18,7 @@ Sorterra solves the problem of disorganized cloud storage by:
 | Web Framework | ASP.NET Core |
 | Database | MySQL 8.0 |
 | ORM | Entity Framework Core 9.0 + Pomelo MySQL |
-| Authentication | Amazon Cognito (planned) |
+| Authentication | Amazon Cognito (JWT validation) |
 | Deployment | AWS ECS Fargate |
 | External API | Microsoft Graph API for SharePoint |
 | Logging | Serilog |
@@ -38,6 +38,8 @@ sorterra-api/
 │   │   │   ├── OrganizationsController.cs # Organization CRUD
 │   │   │   ├── UserOrganizationsController.cs
 │   │   │   ├── SharePointConnectionsController.cs
+│   │   │   ├── SharePointAuthController.cs  # Admin consent flow (consent URL + callback)
+│   │   │   ├── SortController.cs            # Triggers file sorting via Bedrock AgentCore
 │   │   │   ├── OAuthTokensController.cs
 │   │   │   ├── SortingRecipesController.cs
 │   │   │   ├── ProcessedFilesController.cs
@@ -45,7 +47,9 @@ sorterra-api/
 │   │   │   ├── ActivityLogsController.cs
 │   │   │   ├── WebhookEventsController.cs
 │   │   │   └── SearchQueriesController.cs
-│   │   ├── Middleware/                    # (placeholder for JWT middleware)
+│   │   ├── Services/
+│   │   │   ├── CurrentUserService.cs        # Extracts authenticated user from JWT claims
+│   │   │   └── ConsentStateService.cs       # Creates/validates signed JWT state tokens for consent flow
 │   │   ├── Program.cs                     # Application entry point
 │   │   ├── appsettings.json               # Production configuration
 │   │   ├── appsettings.Development.json   # Development configuration
@@ -71,6 +75,7 @@ sorterra-api/
 │   │   │   ├── SharePointConnectionDtos.cs
 │   │   │   ├── OAuthTokenDtos.cs
 │   │   │   ├── SortingRecipeDtos.cs
+│   │   │   ├── SortDtos.cs               # Sort request/response + agent response models
 │   │   │   ├── ProcessedFileDtos.cs
 │   │   │   ├── DocumentChunkDtos.cs
 │   │   │   ├── ActivityLogDtos.cs
@@ -89,8 +94,12 @@ sorterra-api/
 │
 ├── docs/
 │   ├── TODO.md                            # Sprint backlog and task tracking
+│   ├── integration-plan.md                # Admin consent + agent fix plan (Phases 1–4)
+│   ├── agent-api-fixes.md                 # Agent ↔ API discrepancy tracker
 │   ├── agent-recipe-access.md             # How the AI agent retrieves sorting recipes
+│   ├── sort-endpoint-agent-integration.md # Sort endpoint build guide (historical)
 │   ├── api-reference.md                   # Full API reference documentation
+│   ├── testing-guide.md                   # Testing procedures
 │   ├── aws-ec2-deployment.md              # ECR + EC2 deployment guide (legacy)
 │   ├── aws-cognito-setup.md               # Cognito User Pool setup and JWT auth integration
 │   ├── aws-ecs-fargate-deployment.md      # ECR + ECS Fargate deployment guide (current)
@@ -134,8 +143,8 @@ The database supports multi-tenant file management with the following tables:
 ### SharePoint Integration
 | Table | Description |
 |-------|-------------|
-| `sharepoint_connections` | Connected SharePoint sites per organization (stores certificate auth credentials and source folder) |
-| `oauth_tokens` | Encrypted OAuth tokens for SharePoint access |
+| `sharepoint_connections` | Connected SharePoint sites per organization (tenant ID captured via admin consent, source folder config) |
+| `oauth_tokens` | Encrypted OAuth tokens for SharePoint access (unused — agent uses client credentials via MSAL) |
 
 ### File Processing
 | Table | Description |
@@ -244,6 +253,23 @@ All CRUD endpoints follow REST conventions and use DTOs for request/response con
 **UserOrganizations** uses composite key routes instead of `{id}`:
 `GET|PUT|DELETE /api/userorganizations/{userId}/{organizationId}`
 
+#### Sort Endpoint
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sort` | POST | Trigger file sorting — merges all active recipes, invokes the Bedrock AgentCore agent, records results |
+
+See [`docs/sort-endpoint-agent-integration.md`](docs/sort-endpoint-agent-integration.md) for the full build guide.
+
+#### SharePoint Auth (Admin Consent)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/auth/sharepoint/consent` | GET | JWT | Returns the Microsoft admin consent URL for a pending connection |
+| `/api/auth/sharepoint/callback` | GET | None | Handles Microsoft's redirect after consent — captures tenant ID, updates connection |
+
+See [`docs/integration-plan.md`](docs/integration-plan.md) for the full admin consent flow design.
+
 #### Agent Endpoints
 
 | Endpoint | Method | Description |
@@ -337,10 +363,10 @@ The API can be configured via environment variables or `appsettings.json`:
 | `Cognito__Region` | AWS region for Cognito |
 | `Cognito__UserPoolId` | Cognito User Pool ID |
 | `Cognito__AppClientId` | Cognito App Client ID |
-| `Graph__TenantId` | Azure AD tenant ID |
-| `Graph__ClientId` | Azure AD app client ID |
-| `Graph__ClientSecret` | Azure AD app client secret |
-| `Encryption__TokenEncryptionKey` | Key for encrypting OAuth tokens |
+| `AzureAd__ClientId` | Azure AD multi-tenant app registration client ID (shared across all tenants) |
+| `AzureAd__ConsentRedirectUri` | Callback URL registered in Azure AD for admin consent flow |
+| `FrontendBaseUrl` | Frontend URL for post-consent redirects (e.g., `https://sorterra.app`) |
+| `Encryption__TokenEncryptionKey` | HMAC key for signing consent state JWTs (**move to Secrets Manager for production**) |
 
 ### Configuration Files
 

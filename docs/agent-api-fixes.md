@@ -1,6 +1,6 @@
 # Agent ↔ API Integration Fixes
 
-Discrepancies found between `sorterra-agent` (Python) and `sorterra-api` (C# .NET) as of 2026-03-09. Grouped by priority.
+Discrepancies found between `sorterra-agent` (Python) and `sorterra-api` (C# .NET) as of 2026-03-09. Grouped by priority. Updated 2026-03-17 with fix status.
 
 ---
 
@@ -29,40 +29,35 @@ The agent sets `result` to `res['messages'][-1].content` — the LLM's natural-l
 
 **Fix (API):** Store the LLM description in a separate field (or in `ProcessedFile.ErrorMessage` repurposed as a general `details` field), and only put a real path in `NewPath`.
 
-### 3. API returns 200 OK on agent-level errors
+### 3. API returns 200 OK on agent-level errors — ✅ FIXED
 
-**API file:** `Controllers/SortController.cs:118–193`
+**API file:** `Controllers/SortController.cs:117–132`
 
-When the agent returns `status: "error"` (e.g., folder not found, missing path), the API doesn't check it. It creates a misleading "Sorted 0/0 files" activity log and returns HTTP 200 with the error body.
+~~When the agent returns `status: "error"`, the API doesn't check it.~~
 
-**Fix (API):** After deserializing the agent response, check `agentResponse.Status`. If it's `"error"`, return an appropriate HTTP status (e.g., 502 or 422) and write a meaningful activity log entry (e.g., `sort_failed`).
+**Fixed:** The API now checks `agentResponse.Status == "error"` and returns HTTP 502 with a `sort_failed` activity log entry.
 
-### 4. Agent top-level `message` field silently dropped
+### 4. Agent top-level `message` field silently dropped — ✅ FIXED
 
 **Agent file:** `core/agent.py:138,148,151`
-**API file:** `Core/DTOs/SortDtos.cs:17–30`
+**API file:** `Core/DTOs/SortDtos.cs:31–32`
 
-The agent returns `{"status": "error", "message": "Failed to list folder: ..."}` but `AgentResponse` has no `message` property, so the error detail is lost.
+~~`AgentResponse` has no `message` property, so the error detail is lost.~~
 
-**Fix (API):** Add a `message` property to `AgentResponse`:
-```csharp
-[JsonPropertyName("message")]
-public string? Message { get; set; }
-```
-Use it in error responses and activity logs.
+**Fixed:** Added `Message` property to `AgentResponse`. It's used in error responses and `sort_failed` activity logs.
 
 ---
 
 ## Medium
 
-### 5. `SiteUrl` from the connection is not sent to the agent
+### 5. `SiteUrl` from the connection is not sent to the agent — ✅ API FIXED / Agent pending
 
-**API file:** `Controllers/SortController.cs:75–85`
+**API file:** `Controllers/SortController.cs:91`
 **Agent file:** `core/sharepoint_connection/agent_tools.py:28`
 
-Each `SharePointConnection` has a `SiteUrl`, but the agent reads `SHAREPOINT_SITE_URL` from Secrets Manager. If a connection points to a different site than the one in the secret, the agent operates on the wrong site.
+~~The API doesn't send `site_url` in the payload.~~
 
-**Fix:** Either send `site_url` in the payload and have the agent use it, or resolve it from the tenant secret. This is closely related to fix #1.
+**API fix done:** `site_url = connection.SiteUrl` is now included in the agent payload. The agent still reads from Secrets Manager — it needs to be updated to prefer the payload value with fallback: `payload.get('site_url') or sp_secrets.get("SHAREPOINT_SITE_URL")`.
 
 ### 6. `id` semantic mismatch — `OrganizationId` sent as user ID
 
@@ -73,16 +68,13 @@ The API sends `connection.OrganizationId` as `id`. The agent treats it as `user_
 
 **Fix:** Either rename to `organization_id` in the payload and agent, or send the actual Cognito user ID if per-user logging is desired.
 
-### 7. Session ID reuse risks state contamination
+### 7. Session ID reuse risks state contamination — ✅ FIXED
 
-**API file:** `Controllers/SortController.cs:93`
+**API file:** `Controllers/SortController.cs:106`
 
-`session-{OrgId}` is deterministic. Concurrent sorts from the same org share a Bedrock AgentCore session, which could cause stale context or conflicts.
+~~`session-{OrgId}` is deterministic.~~
 
-**Fix (API):** Use a unique session ID per request:
-```csharp
-var sessionId = $"session-{Guid.NewGuid()}";
-```
+**Fixed:** Changed to `$"session-{Guid.NewGuid()}"` for unique session IDs per request.
 
 ---
 
@@ -121,14 +113,10 @@ Success results omit `message`; error results omit `result`. The nullable DTOs h
 
 **Fix:** Either implement per-connection credential forwarding (related to fix #1) or remove the unused fields to avoid confusion. Decide on the intended architecture first.
 
-### 11. `SortingRecipe.Rules` defaults to `"{}"` (object), deserialized as `string[]`
+### 11. `SortingRecipe.Rules` defaults to `"{}"` (object), deserialized as `string[]` — ✅ FIXED
 
 **API file:** `Core/Entities/SortingRecipe.cs:16`
-**API file:** `Controllers/SortController.cs:58–69`
 
-The default `"{}"` triggers a `JsonException` on every new recipe until rules are set. The catch block handles it, but the default should match the expected format.
+~~The default `"{}"` triggers a `JsonException` on every new recipe.~~
 
-**Fix (API):** Change the default to `"[]"`:
-```csharp
-public string Rules { get; set; } = "[]";
-```
+**Fixed:** Changed default to `"[]"`.

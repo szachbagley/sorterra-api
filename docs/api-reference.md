@@ -723,3 +723,105 @@ Update an event. All fields optional.
 ### DELETE /api/webhookevents/{id}
 
 Delete an event. Returns 204.
+
+---
+
+## Sort
+
+### POST /api/sort
+
+Triggers file sorting on a SharePoint connection. Merges all active recipes for the connection's organization into a single agent invocation via Bedrock AgentCore. Records results as `ProcessedFile` records and creates an `ActivityLog` entry.
+
+**Requires:** JWT authentication.
+
+**Request body:**
+
+| Field | Type | Required |
+|-------|------|----------|
+| connectionId | uuid | yes |
+| recipeId | uuid | yes (but all active recipes are merged) |
+| folderPath | string | yes |
+
+```json
+{
+  "connectionId": "44444444-4444-4444-4444-444444444444",
+  "recipeId": "77777777-7777-7777-7777-777777777777",
+  "folderPath": "/sites/Sorterra/Shared Documents/Inbox/"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "status": "success",
+  "filesFound": 5,
+  "filesSorted": 4,
+  "connectionId": "44444444-...",
+  "results": [
+    {
+      "file": "/sites/.../invoice.pdf",
+      "status": "success",
+      "result": "Moved to Finance/Invoices/",
+      "message": null,
+      "processedFileId": "..."
+    }
+  ]
+}
+```
+
+**Error responses:**
+
+| Code | Condition |
+|------|-----------|
+| 400 | Connection missing TenantId, or no active recipes / no rules defined |
+| 404 | Connection or recipe not found |
+| 502 | Agent returned an error, permission denied, or agent not found |
+
+---
+
+## SharePoint Auth (Admin Consent)
+
+### GET /api/auth/sharepoint/consent
+
+Returns the Azure AD admin consent URL for a pending SharePoint connection. The frontend should redirect the browser to this URL.
+
+**Requires:** JWT authentication.
+
+**Query parameters:**
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| connectionId | uuid | yes |
+
+**Response (200):**
+
+```json
+{
+  "consentUrl": "https://login.microsoftonline.com/common/adminconsent?client_id=...&state=...&redirect_uri=..."
+}
+```
+
+**Error responses:**
+
+| Code | Condition |
+|------|-----------|
+| 400 | Connection is not in `pending` status |
+| 404 | Connection not found |
+| 500 | AzureAd configuration missing |
+
+### GET /api/auth/sharepoint/callback
+
+Handles Microsoft's redirect after admin consent. **Not authenticated** — called by Microsoft's browser redirect. Validates the signed state JWT, captures the tenant ID, updates the connection to `consented` status, and redirects the browser to the frontend.
+
+**Query parameters (from Microsoft):**
+
+| Parameter | Description |
+|-----------|-------------|
+| state | Signed JWT state token |
+| tenant | The consenting organization's Azure AD tenant ID |
+| admin_consent | `"True"` if consent was granted |
+| error | Error code (if consent failed) |
+| error_description | Error details (if consent failed) |
+
+**Response:** 302 redirect to `{FrontendBaseUrl}/settings?consent=success` or `?consent=error&message=...`

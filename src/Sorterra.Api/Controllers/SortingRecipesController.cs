@@ -83,7 +83,7 @@ public class SortingRecipesController : ControllerBase
             IsActive = dto.IsActive ?? true,
             Priority = dto.Priority ?? 0,
             CreatedBy = dto.CreatedBy,
-            Rules = dto.Rules ?? "{}",
+            Rules = dto.Rules ?? "[]",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
