@@ -140,6 +140,18 @@ This document tracks the remaining work for the Sorterra backend API, organized 
   - Record clicked results for relevance feedback
 
 ### File Operations
+- [ ] **BACKEND-020**: Fix sort folder path — prepend site-relative path in SortController
+  - **Problem**: The agent's `getFolderByServerRelativeUrl` requires full server-relative paths (e.g., `/sites/Sorterra/Shared Documents`) but `SortController.cs` passes `request.FolderPath` as-is (e.g., `/Shared Documents`).
+  - **Fix**: In `SortController.cs` (line 92), extract the server-relative path from `connection.SiteUrl` and prepend it:
+    ```csharp
+    var siteUri = new Uri(connection.SiteUrl);
+    var sitePath = siteUri.AbsolutePath.TrimEnd('/'); // e.g., "/sites/Sorterra"
+    var agentPath = sitePath + "/" + request.FolderPath.TrimStart('/');
+    // then: path = agentPath,
+    ```
+  - The same fix should also be applied in `sorterra-agent/core/sharepoint_connection/sharepoint_client.py` — a `_to_server_relative_url()` helper has already been added locally but not deployed.
+  - **Workaround**: Users must manually enter the full server-relative path in the Sort modal (e.g., `/sites/Sorterra/Shared Documents` instead of `/Shared Documents`).
+
 - [ ] **BACKEND-014**: Implement file move/rename via Graph API
   - Apply recipe destination path templates
   - Handle path template variables: `[Year]`, `[Month]`, `[Vendor]`, `[Date]`
