@@ -214,7 +214,9 @@ public class SortController : ControllerBase
                 folderPath = request.FolderPath,
                 filesFound = agentResponse.FilesFound,
                 filesSorted = agentResponse.FilesSorted,
-                recipeCount = activeRecipes.Count
+                recipeCount = activeRecipes.Count,
+                tokensConsumed = agentResponse.Stats?.TotalTokensConsumed,
+                durationMs = agentResponse.Stats?.DurationMs
             }),
             CreatedAt = DateTime.UtcNow
         });
@@ -242,7 +244,8 @@ public class SortController : ControllerBase
             agentResponse.FilesFound,
             agentResponse.FilesSorted,
             request.ConnectionId,
-            fileResults
+            fileResults,
+            agentResponse.Stats
         ));
     }
 

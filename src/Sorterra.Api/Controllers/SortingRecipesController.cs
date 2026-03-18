@@ -24,7 +24,13 @@ public class SortingRecipesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] Guid? organizationId, [FromQuery] bool? isActive, [FromQuery] string? orderBy)
     {
-        var query = _dbContext.SortingRecipes.AsQueryable();
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        var query = _dbContext.SortingRecipes.Where(r => userOrgs.Contains(r.OrganizationId));
 
         if (organizationId.HasValue)
             query = query.Where(r => r.OrganizationId == organizationId.Value);
@@ -46,11 +52,17 @@ public class SortingRecipesController : ControllerBase
     [HttpGet("by-connection/{connectionId}")]
     public async Task<IActionResult> GetByConnection(Guid connectionId)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var connection = await _dbContext.SharePointConnections
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == connectionId);
 
-        if (connection == null)
+        if (connection == null || !userOrgs.Contains(connection.OrganizationId))
             return NotFound(new { error = "Connection not found", connectionId });
 
         var recipes = await _dbContext.SortingRecipes
@@ -64,14 +76,27 @@ public class SortingRecipesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SortingRecipes.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
         return Ok(MapToResponse(entity));
     }
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateSortingRecipeDto dto)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        if (!userOrgs.Contains(dto.OrganizationId)) return Forbid();
         var entity = new SortingRecipe
         {
             Id = Guid.NewGuid(),
@@ -96,8 +121,14 @@ public class SortingRecipesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, UpdateSortingRecipeDto dto)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SortingRecipes.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         if (dto.Name is not null) entity.Name = dto.Name;
         if (dto.Description is not null) entity.Description = dto.Description;
@@ -115,8 +146,14 @@ public class SortingRecipesController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SortingRecipes.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         _dbContext.SortingRecipes.Remove(entity);
         await _dbContext.SaveChangesAsync();
@@ -135,8 +172,14 @@ public class SortingRecipesController : ControllerBase
         using var transaction = await _dbContext.Database.BeginTransactionAsync();
         try
         {
+            var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+            var userOrgs = await _dbContext.UserOrganizations
+                .Where(uo => uo.User.CognitoSub == cognitoSub)
+                .Select(uo => uo.OrganizationId)
+                .ToListAsync();
+
             var ids = updates.Select(u => u.Id).ToList();
-            var entities = await _dbContext.SortingRecipes.Where(r => ids.Contains(r.Id)).ToListAsync();
+            var entities = await _dbContext.SortingRecipes.Where(r => ids.Contains(r.Id) && userOrgs.Contains(r.OrganizationId)).ToListAsync();
 
             foreach (var dto in updates)
             {

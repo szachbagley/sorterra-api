@@ -30,6 +30,18 @@ public class AgentResponse
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("stats")]
+    public AgentStats? Stats { get; set; }
+}
+
+public class AgentStats
+{
+    [JsonPropertyName("total_tokens_consumed")]
+    public int TotalTokensConsumed { get; set; }
+
+    [JsonPropertyName("duration_ms")]
+    public long DurationMs { get; set; }
 }
 
 /// <summary>
@@ -62,7 +74,8 @@ public record SortResponseDto(
     int FilesFound,
     int FilesSorted,
     Guid ConnectionId,
-    List<SortFileResultDto> Results
+    List<SortFileResultDto> Results,
+    AgentStats? Stats = null
 );
 
 public record SortFileResultDto(
