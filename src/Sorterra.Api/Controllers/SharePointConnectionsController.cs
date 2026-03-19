@@ -24,15 +24,30 @@ public class SharePointConnectionsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var entities = await _dbContext.SharePointConnections.ToListAsync();
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        var entities = await _dbContext.SharePointConnections
+            .Where(e => userOrgs.Contains(e.OrganizationId))
+            .ToListAsync();
+
         return Ok(entities.Select(MapToResponse));
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SharePointConnections.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
         return Ok(MapToResponse(entity));
     }
 
@@ -41,6 +56,14 @@ public class SharePointConnectionsController : ControllerBase
     {
         if (dto.OrganizationId is null || dto.OrganizationId == Guid.Empty)
             return BadRequest(new { error = "Organization ID is required." });
+
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        if (!userOrgs.Contains(dto.OrganizationId.Value)) return Forbid();
 
         var entity = new SharePointConnection
         {
@@ -67,8 +90,14 @@ public class SharePointConnectionsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, UpdateSharePointConnectionDto dto)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SharePointConnections.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         if (dto.SiteUrl is not null) entity.SiteUrl = dto.SiteUrl;
         if (dto.TenantId is not null) entity.TenantId = dto.TenantId;
@@ -91,8 +120,14 @@ public class SharePointConnectionsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.SharePointConnections.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         _dbContext.SharePointConnections.Remove(entity);
         await _dbContext.SaveChangesAsync();

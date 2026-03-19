@@ -24,21 +24,43 @@ public class ActivityLogsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var entities = await _dbContext.ActivityLogs.ToListAsync();
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        var entities = await _dbContext.ActivityLogs
+            .Where(e => userOrgs.Contains(e.OrganizationId))
+            .ToListAsync();
         return Ok(entities.Select(MapToResponse));
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.ActivityLogs.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
         return Ok(MapToResponse(entity));
     }
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateActivityLogDto dto)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
+        if (!userOrgs.Contains(dto.OrganizationId)) return Forbid();
+
         var entity = new ActivityLog
         {
             Id = Guid.NewGuid(),
@@ -60,8 +82,14 @@ public class ActivityLogsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, UpdateActivityLogDto dto)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.ActivityLogs.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         if (dto.Description is not null) entity.Description = dto.Description;
         if (dto.Metadata is not null) entity.Metadata = dto.Metadata;
@@ -73,8 +101,14 @@ public class ActivityLogsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        var userOrgs = await _dbContext.UserOrganizations
+            .Where(uo => uo.User.CognitoSub == cognitoSub)
+            .Select(uo => uo.OrganizationId)
+            .ToListAsync();
+
         var entity = await _dbContext.ActivityLogs.FindAsync(id);
-        if (entity == null) return NotFound();
+        if (entity == null || !userOrgs.Contains(entity.OrganizationId)) return NotFound();
 
         _dbContext.ActivityLogs.Remove(entity);
         await _dbContext.SaveChangesAsync();
