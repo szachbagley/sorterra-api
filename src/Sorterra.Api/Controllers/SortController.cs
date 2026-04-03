@@ -84,12 +84,20 @@ public class SortController : ControllerBase
             return BadRequest(new { error = "Active recipes have no rules defined. Add instructions to at least one recipe." });
 
         // --- 4. Build the agent payload (single name + merged rules) ---
+        // SharePoint requires server-relative URLs (e.g. /sites/Sorterra/Shared Documents).
+        // The user enters just the folder name (e.g. "Shared Documents"), so prepend the site path.
+        var siteRelativePath = new Uri(connection.SiteUrl).AbsolutePath.TrimEnd('/');
+        var folderPath = request.FolderPath.TrimStart('/');
+        var fullPath = folderPath.StartsWith(siteRelativePath.TrimStart('/'), StringComparison.OrdinalIgnoreCase)
+            ? "/" + folderPath
+            : siteRelativePath + "/" + folderPath;
+
         var agentPayload = new
         {
             id = connection.OrganizationId.ToString(),
             tenant_id = connection.TenantId,
             site_url = connection.SiteUrl,
-            path = request.FolderPath,
+            path = fullPath,
             recipe = new
             {
                 name = "Sorterra",
@@ -146,57 +154,68 @@ public class SortController : ControllerBase
         // --- 7. Record results in the database (combined sort: no single AppliedRecipeId) ---
         var fileResults = new List<SortFileResultDto>();
 
+        _logger.LogInformation("Processing {Count} file results from agent", agentResponse.Results?.Count ?? 0);
+
         if (agentResponse.Results != null)
         {
             foreach (var r in agentResponse.Results)
             {
-                var originalName = Path.GetFileName(r.File);
-
-                // Upsert: update existing record if the file was sorted before
-                var processedFile = await _dbContext.ProcessedFiles
-                    .FirstOrDefaultAsync(p => p.OrganizationId == connection.OrganizationId
-                                           && p.SharePointItemId == r.File);
-
-                if (processedFile != null)
+                try
                 {
-                    processedFile.ConnectionId = connection.Id;
-                    processedFile.OriginalName = originalName;
-                    processedFile.OriginalPath = r.File;
-                    processedFile.NewPath = r.Status == "success" ? r.Result : null;
-                    processedFile.FileExtension = Path.GetExtension(originalName);
-                    processedFile.AppliedRecipeId = null;
-                    processedFile.Status = r.Status;
-                    processedFile.ProcessedAt = DateTime.UtcNow;
-                    processedFile.ErrorMessage = r.Message;
-                }
-                else
-                {
-                    processedFile = new ProcessedFile
+                    var originalName = Path.GetFileName(r.File);
+                    _logger.LogInformation("Processing result: File={File}, Status={Status}", r.File, r.Status);
+
+                    // Upsert: update existing record if the file was sorted before
+                    var processedFile = await _dbContext.ProcessedFiles
+                        .FirstOrDefaultAsync(p => p.OrganizationId == connection.OrganizationId
+                                               && p.SharePointItemId == r.File);
+
+                    if (processedFile != null)
                     {
-                        Id = Guid.NewGuid(),
-                        OrganizationId = connection.OrganizationId,
-                        ConnectionId = connection.Id,
-                        SharePointItemId = r.File,
-                        OriginalName = originalName,
-                        OriginalPath = r.File,
-                        NewPath = r.Status == "success" ? r.Result : null,
-                        FileExtension = Path.GetExtension(originalName),
-                        AppliedRecipeId = null,
-                        Status = r.Status,
-                        ProcessedAt = DateTime.UtcNow,
-                        ErrorMessage = r.Message,
-                        CreatedAt = DateTime.UtcNow
-                    };
-                    _dbContext.ProcessedFiles.Add(processedFile);
-                }
+                        processedFile.ConnectionId = connection.Id;
+                        processedFile.OriginalName = originalName;
+                        processedFile.OriginalPath = r.File;
+                        processedFile.NewPath = r.Status == "success" ? r.Result : null;
+                        processedFile.FileExtension = Path.GetExtension(originalName);
+                        processedFile.AppliedRecipeId = null;
+                        processedFile.Status = r.Status;
+                        processedFile.ProcessedAt = DateTime.UtcNow;
+                        processedFile.ErrorMessage = r.Message;
+                    }
+                    else
+                    {
+                        processedFile = new ProcessedFile
+                        {
+                            Id = Guid.NewGuid(),
+                            OrganizationId = connection.OrganizationId,
+                            ConnectionId = connection.Id,
+                            SharePointItemId = r.File,
+                            OriginalName = originalName,
+                            OriginalPath = r.File,
+                            NewPath = r.Status == "success" ? r.Result : null,
+                            FileExtension = Path.GetExtension(originalName),
+                            AppliedRecipeId = null,
+                            Status = r.Status,
+                            ProcessedAt = DateTime.UtcNow,
+                            ErrorMessage = r.Message,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _dbContext.ProcessedFiles.Add(processedFile);
+                    }
 
-                fileResults.Add(new SortFileResultDto(
-                    r.File,
-                    r.Status,
-                    r.Result,
-                    r.Message,
-                    processedFile.Id
-                ));
+                    fileResults.Add(new SortFileResultDto(
+                        r.File,
+                        r.Status,
+                        r.Result,
+                        r.Message,
+                        processedFile.Id
+                    ));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to upsert ProcessedFile for {File}", r.File);
+                    fileResults.Add(new SortFileResultDto(r.File, "error", null, ex.Message, null));
+                }
             }
         }
 
@@ -269,9 +288,17 @@ public class SortController : ControllerBase
         using var reader = new StreamReader(response.Response);
         var json = await reader.ReadToEndAsync();
 
-        return JsonSerializer.Deserialize<AgentResponse>(json, new JsonSerializerOptions
+        _logger.LogInformation("Raw agent response ({Length} chars): {Json}", json.Length, json);
+
+        var agentResponse = JsonSerializer.Deserialize<AgentResponse>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         }) ?? throw new InvalidOperationException("Agent returned null response");
+
+        _logger.LogInformation(
+            "Deserialized agent response: Status={Status}, FilesFound={FilesFound}, FilesSorted={FilesSorted}, ResultsCount={ResultsCount}",
+            agentResponse.Status, agentResponse.FilesFound, agentResponse.FilesSorted, agentResponse.Results?.Count ?? -1);
+
+        return agentResponse;
     }
 }

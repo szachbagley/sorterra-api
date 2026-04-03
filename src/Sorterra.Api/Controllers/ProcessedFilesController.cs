@@ -30,9 +30,17 @@ public class ProcessedFilesController : ControllerBase
             .Select(uo => uo.OrganizationId)
             .ToListAsync();
 
+        var totalCount = await _dbContext.ProcessedFiles.CountAsync();
+        _logger.LogInformation(
+            "GetAll ProcessedFiles: CognitoSub={Sub}, UserOrgs=[{Orgs}], TotalInTable={Total}",
+            cognitoSub, string.Join(", ", userOrgs), totalCount);
+
         var entities = await _dbContext.ProcessedFiles
             .Where(e => userOrgs.Contains(e.OrganizationId))
             .ToListAsync();
+
+        _logger.LogInformation("GetAll ProcessedFiles: Returning {Filtered} of {Total} records", entities.Count, totalCount);
+
         return Ok(entities.Select(MapToResponse));
     }
 

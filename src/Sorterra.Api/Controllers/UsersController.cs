@@ -21,6 +21,128 @@ public class UsersController : ControllerBase
         _logger = logger;
     }
 
+    [HttpGet("me")]
+    public async Task<IActionResult> GetMe()
+    {
+        var cognitoSub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value;
+        var email = User.FindFirst("email")?.Value;
+        var name = User.FindFirst("name")?.Value;
+
+        if (string.IsNullOrEmpty(cognitoSub))
+            return Unauthorized();
+
+        // Look up existing user with org membership
+        var user = await _dbContext.Users
+            .Include(u => u.UserOrganizations)
+                .ThenInclude(uo => uo.Organization)
+            .FirstOrDefaultAsync(u => u.CognitoSub == cognitoSub);
+
+        // Auto-provision if user doesn't exist in DB yet
+        if (user == null)
+        {
+            using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            try
+            {
+                user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    CognitoSub = cognitoSub,
+                    Email = email ?? "",
+                    DisplayName = name,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _dbContext.Users.Add(user);
+
+                var orgName = !string.IsNullOrWhiteSpace(name)
+                    ? $"{name}'s Organization"
+                    : $"{(email ?? "User").Split('@')[0]}'s Organization";
+
+                var organization = new Organization
+                {
+                    Id = Guid.NewGuid(),
+                    Name = orgName,
+                    Settings = "{}",
+                    CreatedAt = DateTime.UtcNow
+                };
+                _dbContext.Organizations.Add(organization);
+
+                var membership = new UserOrganization
+                {
+                    UserId = user.Id,
+                    OrganizationId = organization.Id,
+                    Role = "owner",
+                    JoinedAt = DateTime.UtcNow
+                };
+                _dbContext.UserOrganizations.Add(membership);
+
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // Populate navigation properties for the response
+                user.UserOrganizations = new List<UserOrganization> { membership };
+                membership.Organization = organization;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Failed to auto-provision user {CognitoSub}", cognitoSub);
+                return StatusCode(500, new { message = "Failed to provision user account." });
+            }
+        }
+        else if (user.UserOrganizations.Count == 0)
+        {
+            // User exists but has no org — auto-provision one
+            using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            try
+            {
+                var orgName = !string.IsNullOrWhiteSpace(user.DisplayName)
+                    ? $"{user.DisplayName}'s Organization"
+                    : $"{user.Email.Split('@')[0]}'s Organization";
+
+                var organization = new Organization
+                {
+                    Id = Guid.NewGuid(),
+                    Name = orgName,
+                    Settings = "{}",
+                    CreatedAt = DateTime.UtcNow
+                };
+                _dbContext.Organizations.Add(organization);
+
+                var membership = new UserOrganization
+                {
+                    UserId = user.Id,
+                    OrganizationId = organization.Id,
+                    Role = "owner",
+                    JoinedAt = DateTime.UtcNow
+                };
+                _dbContext.UserOrganizations.Add(membership);
+
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                user.UserOrganizations = new List<UserOrganization> { membership };
+                membership.Organization = organization;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Failed to auto-provision org for user {UserId}", user.Id);
+            }
+        }
+
+        var primaryMembership = user.UserOrganizations.FirstOrDefault();
+        OrganizationResponseDto? orgDto = null;
+        if (primaryMembership?.Organization != null)
+        {
+            var org = primaryMembership.Organization;
+            orgDto = new OrganizationResponseDto(org.Id, org.Name, org.CreatedAt, org.Settings);
+        }
+
+        return Ok(new UserProfileDto(MapToResponse(user), orgDto, primaryMembership?.Role));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -28,7 +150,7 @@ public class UsersController : ControllerBase
         return Ok(entities.Select(MapToResponse));
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
         var entity = await _dbContext.Users.FindAsync(id);
@@ -89,7 +211,7 @@ public class UsersController : ControllerBase
         }
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateUserDto dto)
     {
         var entity = await _dbContext.Users.FindAsync(id);
@@ -104,7 +226,7 @@ public class UsersController : ControllerBase
         return Ok(MapToResponse(entity));
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var entity = await _dbContext.Users.FindAsync(id);

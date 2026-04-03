@@ -21,3 +21,9 @@ public record UserResponseDto(
     DateTime UpdatedAt,
     DateTime? LastLoginAt
 );
+
+public record UserProfileDto(
+    UserResponseDto User,
+    OrganizationResponseDto? Organization,
+    string? Role
+);
